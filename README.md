@@ -56,6 +56,14 @@ src/pages/Donnees/
 
 Cette page permet l'upload de fichiers CSV, Excel ou JSON, la saisie manuelle de donnees, la visualisation (histogrammes, scatter, heatmap, tendances SVG) et le suivi des KPI : fiabilite, couts, productivite et performance du modele.
 
+----
+## **Interface Data**
+
+Voici la visualisation de la partie gestion des données dans l’application :
+
+![Data Page](src/pages/images/data.png)
+----
+
 **Page Predictions** — `src/pages/Predictions/`
 
 ```
@@ -77,6 +85,14 @@ src/pages/Predictions/
 
 Cette page permet de soumettre un fichier, de selectionner un modele, de configurer les parametres de prediction et de consulter les resultats, le graphique de prediction et les journaux de l'agent.
 
+----
+##  **Interface Prediction**
+
+Voici la visualisation de la partie prédiction du modèle dans l’application :
+
+![Prediction Page](src/pages/images/prediction_page.png)
+----
+
 **Page Training** — `src/pages/Training/`
 
 ```
@@ -93,6 +109,13 @@ src/pages/Training/
     ├── ResultsCard.tsx
     └── AgentTrainingLogs.tsx
 ```
+----
+##  **Interface Training**
+
+Voici la visualisation de la partie entraînement du modèle dans l’application :
+
+![Training Page](src/pages/images/training_page.png)
+----
 
 Cette page gere l'upload du dataset, le suivi visuel de la progression de l'entrainement, la selection du modele (mode automatique ou manuel) et l'affichage des journaux de l'agent.
 
@@ -114,6 +137,16 @@ src/pages/Models/
 ```
 
 Cette page permet de consulter la liste des modeles entraines, de comparer leurs performances (F1, Precision, Recall), de gerer leur deploiement et de consulter le registre des modeles.
+
+----
+
+##  **Interface Model**
+
+Voici la visualisation de la partie gestion du modèle dans l’application :
+
+![Model Page](src/pages/images/model_page.png)
+
+----
 
 ### Backend
 
