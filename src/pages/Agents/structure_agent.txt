@@ -1,0 +1,26 @@
+Voici les 8 fichiers livrés séparément, exactement selon l'architecture qu'on souhaiter avoir :
+
+Structure livrée:
+
+src/
+├── App.tsx                          ← Route /agents + import
+└── pages/
+    └── Agents/
+        ├── index.tsx                ← Page principale (layout + sidebar + topbar + grid)
+        ├── agents.css               ← CSS complet (tokens, sidebar, cards, chart, animations)
+        ├── types.ts                 ← Tous les types TypeScript
+        └── components/
+            ├── FluxCard.tsx         ← Diagramme flux de données & modèles (collapsible)
+            ├── CompatibilityCard.tsx← Table statut compatibilité (Compatible/Alert/Non Compatible)
+            ├── DelegationCard.tsx   ← Arbre agents avec indentation + statuts (collapsible)
+            └── PerformanceCard.tsx  ← Table outils + bar chart F1-Score / Recall animé
+
+
+            Ce qui est inclus :
+
+CSS Custom Properties (design tokens) + classes utilitaires pour un rendu fluide
+Animations : fadeIn sur les cartes, barGrow sur le chart, micro-interactions hover
+Grid 2 colonnes responsive (bascule 1 col sous 1100px)
+Sidebar avec nav active + help-box + footer
+Topbar avec badge notification + user avatar
+Toutes les données statiques dans index.tsx, prêtes à être remplacées par des appels API
