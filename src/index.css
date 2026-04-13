@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* On ajoute un fond léger pour tout le projet comme sur tes maquettes */
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: #F1F4F9; /* Le gris bleuté de tes images */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* On s'assure que le container React prend toute la place */
+#root {
+  min-height: 100vh;
+  display: flex;
+}

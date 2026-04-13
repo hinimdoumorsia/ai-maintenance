@@ -1,0 +1,14 @@
+Voici tous les fichiers générés ! Voici la structure complète produite :
+
+src/pages/Models/
+├── models.css                          ← Tous les styles (variables, layout, cartes, tables…)
+├── index.tsx                           ← Page principale (orchestre tous les composants)
+├── types.ts                            ← Types TypeScript (Model, PerformanceData, ModelRegistry…)
+└── components/
+    ├── Sidebar.tsx                     ← Barre latérale avec navigation + "Besoin d'aide?"
+    ├── Header.tsx                      ← En-tête avec titre, cloche notif, bouton Admin
+    ├── MesModeles.tsx                  ← Tableau des modèles avec badges de statut et actions
+    ├── PerformanceComparee.tsx         ← Graphique à barres SVG (F1, Precision, Recall)
+    ├── NouveauModele.tsx               ← Card centrée avec bouton "Démarrer l'entrainement"
+    ├── GestionDeploiement.tsx          ← Modèle déployé + graphique courbes + Undeploy/Remplace
+    └── RegistreModeles.tsx             ← Liste des 4 entrées avec icônes colorées et menu ⋮

@@ -1,0 +1,19 @@
+# Voici ce qui a été livré. Structure complète de la page Training :
+
+src/
+├── App.tsx                          ← NOUVEAU: Router React avec les routes
+└── pages/
+    ├── Predictions/
+    │   └── index.tsx                ← MIS À JOUR: navigation useNavigate
+    └── Training/
+        ├── index.tsx                ← Page principale
+        ├── training.css             ← CSS complet
+        ├── types.ts                 ← Types TypeScript
+        └── components/
+            ├── DatasetUpload.tsx    ← Upload + aperçu tableau
+            ├── TrainingProgress.tsx ← Cercle SVG 65% + étapes
+            ├── ModelSelection.tsx   ← Tabs Auto/Manuel + cards modèles
+            ├── AgentOptionsCard.tsx ← Toggles + info box "L'agent va"
+            ├── StartTrainingButton.tsx ← Bouton orange animé
+            ├── ResultsCard.tsx      ← LSTM + métriques + history chart
+            └── AgentTrainingLogs.tsx← Journaux timestampés

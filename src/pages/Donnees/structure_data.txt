@@ -1,0 +1,15 @@
+Voici tous les 7 fichiers livrés séparément, exactement selon l'image :
+
+Structure livrée
+
+src/
+├── App.tsx                              ← Route /donnees + import
+└── pages/
+    └── Donnees/
+        ├── index.tsx                    ← Page principale (layout + sidebar + topbar)
+        ├── donnees.css                  ← CSS complet (variables, grid, sidebar, KPI...)
+        ├── types.ts                     ← Tous les types TypeScript
+        └── components/
+            ├── PredictionCard.tsx       ← Upload CSV/Excel/JSON + formulaire manuel
+            ├── VisualisationCard.tsx    ← Histogrammes, scatter, heatmap, tendances SVG
+            └── KPICard.tsx              ← Fiabilité, Coûts, Productivité, Performance modèle

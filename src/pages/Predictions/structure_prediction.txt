@@ -1,0 +1,18 @@
+Voici la structure complète et correcte :
+
+src/
+├── pages/
+│   └── Predictions/
+        ├── predictions.css 
+│       ├── index.tsx                    # Page principale (orchestration)
+│       ├── components/
+│       │   ├── Header.tsx               # En-tête avec titre et user
+│       │   ├── FileUploadCard.tsx       # Glisser un fichier + aperçu
+│       │   ├── ResultsCard.tsx          # KPI Résultats 2025-2026
+│       │   ├── ModelSelector.tsx        # Sélectionner un modèle
+│       │   ├── PredictionSettings.tsx   # Paramètres (fenêtre, forecast, batch)
+│       │   ├── PredictionChart.tsx      # Graphique de prédiction
+│       │   ├── ExplanationsCard.tsx     # Explications (texte)
+│       │   ├── AgentLogs.tsx            # Journaux de l'agent
+│       │   └── ActionButton.tsx         # Bouton Lancer Prédiction
+│       └── types.ts                     # Types TypeScript
