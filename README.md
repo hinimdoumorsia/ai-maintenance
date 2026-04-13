@@ -148,6 +148,92 @@ Voici la visualisation de la partie gestion du modèle dans l’application :
 
 ----
 
+----
+
+
+
+---
+
+## **Description de la page**
+
+Cette page permet de :
+- visualiser les agents IA actifs
+- analyser les flux de données entre agents et modèles
+- vérifier la compatibilité des outils et modèles utilisés
+- observer la structure de délégation des agents
+- comparer les performances (F1-score, Recall)
+- superviser le comportement global du système multi-agents
+
+---
+
+## **Détail des composants**
+
+### **FluxCard.tsx**
+Affiche le diagramme des flux de données et des modèles IA.  
+Permet de comprendre comment les informations circulent entre les agents.
+
+---
+
+### **CompatibilityCard.tsx**
+Affiche un tableau de compatibilité :
+- Compatible
+- Alert
+- Non compatible
+
+Permet d’identifier les conflits entre outils et modèles.
+
+---
+
+### **DelegationCard.tsx**
+Affiche l’arbre des agents sous forme hiérarchique :
+- agents principaux
+- sous-agents
+- statuts de délégation
+
+---
+
+### **PerformanceCard.tsx**
+Affiche les performances des agents :
+- F1-score
+- Recall
+- comparaison des outils IA
+
+Inclut un bar chart animé.
+
+---
+
+## **Fonctionnalités incluses**
+
+- CSS Custom Properties (design tokens)
+- Sidebar avec navigation active + footer + help box
+- Topbar avec notifications + avatar utilisateur
+- Animations :
+  - fadeIn (cartes)
+  - barGrow (graphiques)
+- Micro-interactions hover
+- Layout responsive :
+  - 2 colonnes
+  - 1 colonne sous 1100px
+- Données statiques prêtes pour API
+
+---
+
+##  **Interface**
+
+![Agents Page](src/pages/images/agent_page.png)
+
+---
+
+##  **Objectif**
+
+La page Agents est conçue pour fournir une **vision centralisée d’un système multi-agents IA**, permettant :
+- supervision des agents
+- analyse des flux internes
+- contrôle des performances
+- détection des incohérences
+- gestion intelligente de l’orchestration
+
+----
 ### Backend
 
 Le backend est developpe en Python. Il expose une API via FastAPI et integre un agent intelligent construit avec LangChain et LangGraph.

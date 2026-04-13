@@ -5,6 +5,7 @@ import Predictions from "./pages/Predictions";
 import Training from "./pages/Training";
 import DonneesPage from './pages/Donnees/index';
 import ModelsPage from './pages/Models';
+import AgentsPage from "./pages/Agents/index";
 
 const App = () => {
   return (
@@ -16,6 +17,7 @@ const App = () => {
         <Route path="*" element={<Navigate to="/predictions" replace />} />
         <Route path="/donnees" element={<DonneesPage />} />
         <Route path="/models" element={<ModelsPage />} />
+        <Route path="/agents" element={<AgentsPage />} />
       </Routes>
     </BrowserRouter>
   );
