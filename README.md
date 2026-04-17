@@ -274,4 +274,7 @@ Eleve ingenieur en Intelligence Artificielle et Technologie des Donnees, develop
 **Nankouli Marc Thierry**
 Eleve ingenieur en Intelligence Artificielle et Technologie des Donnees, developpeur d'application.
 
+**Djeri Alassani Oubenoupou**
+Eleve ingenieur en Intelligence Artificielle et Technologie des Donnees, developpeur d'application.
+
 **Encadrant : Professeur Zaki**
