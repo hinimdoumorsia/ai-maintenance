@@ -1,6 +1,7 @@
 // src/pages/Donnees/components/InterpretationCard.tsx
 
 import React from 'react';
+import { BarChart2, Lightbulb } from 'lucide-react';
 
 interface InterpretationCardProps {
   predictions?: {
@@ -14,7 +15,7 @@ export const InterpretationCard: React.FC<InterpretationCardProps> = ({ predicti
   return (
     <div className="card interpretation-card">
       <div className="card-title">
-        <span className="card-icon">📊</span>
+        <BarChart2 size={16} style={{ flexShrink: 0, color: '#f97316' }} />
         Interprétation & Recommandations
       </div>
 
@@ -65,7 +66,7 @@ export const InterpretationCard: React.FC<InterpretationCardProps> = ({ predicti
 
         {/* Note d'interprétation */}
         <div className="interpretation-note">
-          <div className="note-icon">💡</div>
+          <div className="note-icon"><Lightbulb size={16} style={{ color: '#f97316' }} /></div>
           <div className="note-text">
             Basé sur l'analyse des données historiques et les tendances actuelles,
             le modèle prédit un fonctionnement nominal avec une maintenance préventive recommandée.

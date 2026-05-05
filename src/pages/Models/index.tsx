@@ -1,9 +1,8 @@
 // src/pages/Models/index.tsx
 import React from 'react';
 import './models.css';
-
-import Sidebar             from './components/Sidebar';
-import Header              from './components/Header';
+import AppLayout from '../../components/AppLayout';
+import { Package } from 'lucide-react';
 import MesModeles          from './components/MesModeles';
 import PerformanceComparee from './components/PerformanceComparee';
 import NouveauModele       from './components/NouveauModele';
@@ -13,16 +12,12 @@ import RegistreModeles     from './components/RegistreModeles';
 
 const ModelsPage: React.FC = () => {
   return (
-    <div className="app-shell">
-
-      {/* ── Sidebar ── */}
-      <Sidebar />
-
-      {/* ── Contenu principal ── */}
-      <div className="main-content">
-
-        {/* En-tête */}
-        <Header />
+    <AppLayout
+      title="Modèles"
+      subtitle="Gérer, évaluer et déployer vos modèles de maintenance prédictive"
+      icon={Package}
+    >
+      <div className="models-main">
 
         {/* Grille */}
         <div className="page-body">
@@ -50,7 +45,7 @@ const ModelsPage: React.FC = () => {
 
         </div>
       </div>
-    </div>
+    </AppLayout>
   );
 };
 

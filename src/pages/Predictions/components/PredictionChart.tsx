@@ -72,7 +72,8 @@ const PredictionChart: React.FC = () => {
           <polyline points={polyline(tempData)} fill="none" stroke="#2563EB" strokeWidth={2} />
 
           {/* Alert triangle at prediction start */}
-          <text x={toX(predStartIdx) - 8} y={toY(78) - 6} fontSize={16} textAnchor="middle">⚠️</text>
+          <polygon points={`${toX(predStartIdx) - 8},${toY(78) - 4} ${toX(predStartIdx)},${toY(78) - 16} ${toX(predStartIdx) + 8},${toY(78) - 4}`} fill="#F97316" opacity={0.85} />
+          <text x={toX(predStartIdx)} y={toY(78) - 7} fontSize={7} fill="white" textAnchor="middle" fontWeight="700">!</text>
           <circle cx={toX(predStartIdx)} cy={toY(78)} r={5} fill="#F97316" />
 
           {/* Date labels */}

@@ -1,4 +1,8 @@
 import React, { useState } from "react";
+import {
+  Bot, Monitor, BarChart2, Cpu, TrendingUp, Settings2,
+  Scissors, ClipboardList, Search,
+} from "lucide-react";
 import type { FluxStatus } from "../types";
 
 interface FluxCardProps {
@@ -13,7 +17,7 @@ const FluxCard: React.FC<FluxCardProps> = ({ status }) => {
       {/* Header */}
       <div className="card-header">
         <div className="card-header-left">
-          <div className="card-icon">🤖</div>
+          <div className="card-icon" style={{ color: "#f97316" }}><Bot size={17} /></div>
           <div>
             <div className="card-title">Flux de Données &amp; Modèles</div>
             <div className="card-subtitle">Gérer les flux des données et délégation d'agents</div>
@@ -44,7 +48,7 @@ const FluxCard: React.FC<FluxCardProps> = ({ status }) => {
           <div style={{ display: "flex", alignItems: "center", gap: 0, width: "100%" }}>
             {/* Données Capteurs */}
             <div className="flux-node">
-              <div className="flux-node-icon" style={{ fontSize: 20 }}>🖥️</div>
+              <div className="flux-node-icon" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}><Monitor size={20} /></div>
               <div className="flux-node-label">Données<br />Capteurs</div>
             </div>
 
@@ -55,9 +59,9 @@ const FluxCard: React.FC<FluxCardProps> = ({ status }) => {
             <div className="flux-node">
               <div
                 className="flux-node-icon primary"
-                style={{ width: 56, height: 56, fontSize: 24 }}
+                style={{ width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center" }}
               >
-                🤖
+                <Bot size={24} />
               </div>
               <div className="flux-node-label">Agent<br />Central</div>
             </div>
@@ -80,13 +84,13 @@ const FluxCard: React.FC<FluxCardProps> = ({ status }) => {
                 <div className="tool-box-title">Trousse à Outils</div>
                 <div className="tool-box-chevron">∨</div>
                 <div className="tool-item">
-                  <span className="tool-item-icon">✂️</span> Nettoyage
+                  <span className="tool-item-icon"><Scissors size={12} /></span> Nettoyage
                 </div>
                 <div className="tool-item">
-                  <span className="tool-item-icon">📋</span> Validation de Schéma
+                  <span className="tool-item-icon"><ClipboardList size={12} /></span> Validation de Schéma
                 </div>
                 <div className="tool-item">
-                  <span className="tool-item-icon">🔍</span> Analyse de Compatibilité
+                  <span className="tool-item-icon"><Search size={12} /></span> Analyse de Compatibilité
                 </div>
                 <div className="tool-box-footer">
                   <span className="status-pill online" style={{ display: "inline-flex", fontSize: 10 }}>
@@ -108,7 +112,7 @@ const FluxCard: React.FC<FluxCardProps> = ({ status }) => {
 
               {/* ML Model */}
               <div className="flux-node" style={{ flexDirection: "row", gap: 8 }}>
-                <div className="flux-node-icon" style={{ width: 44, height: 44, fontSize: 18 }}>📊</div>
+                <div className="flux-node-icon" style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center" }}><BarChart2 size={18} /></div>
                 <div className="flux-node-label" style={{ textAlign: "left" }}>
                   Modèles<br />Machine Learning
                 </div>
@@ -116,7 +120,7 @@ const FluxCard: React.FC<FluxCardProps> = ({ status }) => {
 
               {/* DL Model */}
               <div className="flux-node" style={{ flexDirection: "row", gap: 8 }}>
-                <div className="flux-node-icon" style={{ width: 44, height: 44, fontSize: 18 }}>🧠</div>
+                <div className="flux-node-icon" style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center" }}><Cpu size={18} /></div>
                 <div className="flux-node-label" style={{ textAlign: "left" }}>
                   Modèles<br />Deep Learning
                 </div>
@@ -130,7 +134,7 @@ const FluxCard: React.FC<FluxCardProps> = ({ status }) => {
             <div style={{ display: "flex", flexDirection: "column", gap: 20, flexShrink: 0 }}>
               {/* Prediction */}
               <div className="flux-node">
-                <div className="flux-node-icon" style={{ fontSize: 20 }}>📈</div>
+                <div className="flux-node-icon" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}><TrendingUp size={20} /></div>
                 <div className="flux-node-label">Prédiction</div>
               </div>
 
@@ -154,8 +158,8 @@ const FluxCard: React.FC<FluxCardProps> = ({ status }) => {
 
             {/* Other Agents */}
             <div className="flux-node">
-              <div className="flux-node-icon" style={{ fontSize: 20 }}>⚙️</div>
-              <div className="flux-node-label">Other de-les<br />Agents</div>
+              <div className="flux-node-icon" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}><Settings2 size={20} /></div>
+              <div className="flux-node-label">Autres<br />Agents</div>
             </div>
           </div>
         </div>

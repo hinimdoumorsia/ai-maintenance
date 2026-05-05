@@ -2,16 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
-/* On ajoute un fond léger pour tout le projet comme sur tes maquettes */
+/* ══════════════════════════════════════════
+   THEME VARIABLES — Light (default)
+   ══════════════════════════════════════════ */
+:root {
+  --theme-bg:           #f9fafb;
+  --theme-bg-deep:      #f1f4f9;
+  --theme-bg-card:      #ffffff;
+  --theme-bg-hover:     #f3f4f6;
+  --theme-border:       #e5e7eb;
+  --theme-border-bright:#d1d5db;
+  --theme-text:         #111827;
+  --theme-text-muted:   #6b7280;
+  --theme-text-faint:   #9ca3af;
+  --theme-sidebar-bg:   #ffffff;
+  --theme-header-bg:    #ffffff;
+  --theme-input-bg:     #f9fafb;
+  --theme-shadow:       rgba(0,0,0,0.06);
+}
+
+/* ══════════════════════════════════════════
+   THEME VARIABLES — Dark
+   ══════════════════════════════════════════ */
+[data-theme="dark"] {
+  --theme-bg:           #0a0e1a;
+  --theme-bg-deep:      #060a14;
+  --theme-bg-card:      #151c2e;
+  --theme-bg-hover:     #1a2238;
+  --theme-border:       #243049;
+  --theme-border-bright:#2e3d5c;
+  --theme-text:         #e6ecf5;
+  --theme-text-muted:   #8896b3;
+  --theme-text-faint:   #5a6788;
+  --theme-sidebar-bg:   #0f1525;
+  --theme-header-bg:    #0f1525;
+  --theme-input-bg:     #151c2e;
+  --theme-shadow:       rgba(0,0,0,0.3);
+}
+
 body {
   margin: 0;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background-color: #F1F4F9; /* Le gris bleuté de tes images */
+  background-color: var(--theme-bg);
+  color: var(--theme-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-/* On s'assure que le container React prend toute la place */
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--theme-border-bright); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--theme-text-faint); }
+
 #root {
   min-height: 100vh;
   display: flex;

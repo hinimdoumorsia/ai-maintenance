@@ -84,7 +84,7 @@ a { text-decoration: none; }
 /* ==============================
    MAIN CONTENT
    ============================== */
-.main-content { flex: 1; margin-left: 220px; display: flex; flex-direction: column; min-height: 100vh; }
+.main-content { flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
 
 /* ==============================
    HEADER
@@ -446,8 +446,61 @@ a { text-decoration: none; }
   .training-content-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
-  .sidebar { width: 60px; min-width: 60px; }
-  .brand-name, .nav-label, .help-card { display: none; }
-  .main-content { margin-left: 60px; }
+  .main-content { min-height: auto; }
   .training-top-row, .training-bottom-row { grid-template-columns: 1fr; }
 }
+
+/* -- DARK THEME OVERRIDES -- */
+[data-theme="dark"] .training-page,
+[data-theme="dark"] .training-layout { background: #0a0e1a; }
+[data-theme="dark"] .train-card,
+[data-theme="dark"] .card { background: #151c2e; border-color: #243049; }
+[data-theme="dark"] .card-title,
+[data-theme="dark"] .train-card-title,
+[data-theme="dark"] .section-title { color: #e6ecf5; }
+[data-theme="dark"] .card-sub,
+[data-theme="dark"] .train-sub,
+[data-theme="dark"] .section-subtitle { color: #8896b3; }
+[data-theme="dark"] .prediction-header { background: #0f1525; border-color: #243049; }
+[data-theme="dark"] .header-title { color: #e6ecf5; }
+[data-theme="dark"] .header-subtitle { color: #8896b3; }
+[data-theme="dark"] .notif-bell { border-color: #243049; color: #8896b3; }
+[data-theme="dark"] .user-chip { border-color: #243049; color: #e6ecf5; }
+[data-theme="dark"] .drop-zone { background: #0f1525; border-color: #2e3d5c; }
+[data-theme="dark"] .drop-zone.dragging { border-color: var(--blue-600); background: rgba(37,99,235,0.06); }
+[data-theme="dark"] .drop-label { color: #8896b3; }
+[data-theme="dark"] .drop-or { color: #5a6788; }
+[data-theme="dark"] .drop-hint { color: #5a6788; }
+[data-theme="dark"] .preview-header { background: #0f1525; }
+[data-theme="dark"] .preview-name { color: #e6ecf5; }
+[data-theme="dark"] .preview-meta { color: #8896b3; }
+[data-theme="dark"] .data-table th { background: #1a2238; color: #8896b3; }
+[data-theme="dark"] .data-table td { border-top-color: #1a2238; color: #8896b3; }
+[data-theme="dark"] .data-table tr:hover td { background: #1a2238; }
+[data-theme="dark"] .mode-btn { background: #151c2e; color: #8896b3; }
+[data-theme="dark"] .mode-toggle { border-color: #243049; }
+[data-theme="dark"] .model-card-row { background: #151c2e; border-color: #243049; }
+[data-theme="dark"] .model-card-row:hover { border-color: var(--blue-600); background: rgba(37,99,235,0.06); }
+[data-theme="dark"] .model-card-row.selected { border-color: var(--blue-600); background: rgba(37,99,235,0.06); }
+[data-theme="dark"] .model-card-name { color: #e6ecf5; }
+[data-theme="dark"] .model-card-desc { color: #8896b3; }
+[data-theme="dark"] .model-radio { border-color: #5a6788; }
+[data-theme="dark"] .step-label { color: #8896b3; }
+[data-theme="dark"] .agent-option-row { border-bottom-color: #1a2238; }
+[data-theme="dark"] .agent-option-title { color: #e6ecf5; }
+[data-theme="dark"] .agent-option-desc { color: #8896b3; }
+[data-theme="dark"] .agent-info-box { background: rgba(37,99,235,0.06); }
+[data-theme="dark"] .agent-info-title { color: #e6ecf5; }
+[data-theme="dark"] .agent-info-item { color: #8896b3; }
+[data-theme="dark"] .toggle-switch { background: #1a2238; }
+[data-theme="dark"] .auto-description { color: #8896b3; }
+[data-theme="dark"] .model-used-label { color: #8896b3; }
+[data-theme="dark"] .model-used-name { color: #e6ecf5; }
+[data-theme="dark"] .model-badge { background: #1a2238; color: #8896b3; }
+[data-theme="dark"] .metric-label { color: #8896b3; }
+[data-theme="dark"] .history-title { color: #e6ecf5; }
+[data-theme="dark"] .log-entry { background: #0f1525; color: #8896b3; }
+[data-theme="dark"] .log-entry.training-log { background: #0f1525; }
+[data-theme="dark"] .log-time { color: #5a6788; }
+[data-theme="dark"] .log-detail { color: #8896b3; }
+[data-theme="dark"] .table-footer { color: #5a6788; }

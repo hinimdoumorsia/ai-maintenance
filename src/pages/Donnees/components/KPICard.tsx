@@ -2,6 +2,7 @@
 // Panneau bas droite : Contrôle des KPI - Cahier des Charges 2025-2026
 
 import React from 'react';
+import { Target } from 'lucide-react';
 import {
   KPIFiabilite,
   KPICouts,
@@ -71,7 +72,7 @@ export const KPICard: React.FC<Props> = ({ fiabilite, couts, productivite, model
   return (
     <div className="card kpi-card">
       <h2 className="card-title">
-        <span className="card-icon">🎯</span>
+        <Target size={16} style={{ flexShrink: 0, color: '#f97316' }} />
         Contrôle des KPI - Cahier des Charges 2025-2026
       </h2>
 
@@ -90,7 +91,7 @@ export const KPICard: React.FC<Props> = ({ fiabilite, couts, productivite, model
               <Donut pct={fiabilite.taux_disponibilite_cible} color="#f97316" label={`${fiabilite.taux_disponibilite_cible}%`} />
             </div>
             <div className={`kpi-cible ${fiabilite.cible_atteinte ? 'ok' : 'progress'}`}>
-              {fiabilite.cible_atteinte ? '✅ Cible atteinte' : '🟡 En progrès'}
+              {fiabilite.cible_atteinte ? 'Cible atteinte' : 'En progrès'}
             </div>
           </div>
         </div>
@@ -110,7 +111,7 @@ export const KPICard: React.FC<Props> = ({ fiabilite, couts, productivite, model
               </div>
             </div>
             <div className={`kpi-cible ${couts.cible_atteinte ? 'ok' : 'progress'}`}>
-              {couts.cible_atteinte ? '✅ Cible atteinte' : '🟡 En progrès'}
+              {couts.cible_atteinte ? 'Cible atteinte' : 'En progrès'}
             </div>
           </div>
         </div>
@@ -126,7 +127,7 @@ export const KPICard: React.FC<Props> = ({ fiabilite, couts, productivite, model
                 <div className="kpi-value-medium">{productivite.temps_arret_non_planifie}</div>
                 <div className="kpi-badge-yellow">{productivite.temps_arret_non_planifie}</div>
               </div>
-              <div className="kpi-cible ok">✅ Cible atteinte</div>
+              <div className="kpi-cible ok">Cible atteinte</div>
             </div>
 
             {/* OEE */}
@@ -140,7 +141,7 @@ export const KPICard: React.FC<Props> = ({ fiabilite, couts, productivite, model
                 <SmallDonut pct={productivite.oee_progress} color="#22c55e" />
               </div>
               <div className={`kpi-cible ${productivite.cible_oee_atteinte ? 'ok' : 'progress'}`}>
-                {productivite.cible_oee_atteinte ? '✅ Cible atteinte' : '🟡 En progrès'}
+                {productivite.cible_oee_atteinte ? 'Cible atteinte' : 'En progrès'}
               </div>
             </div>
           </div>
@@ -158,7 +159,7 @@ export const KPICard: React.FC<Props> = ({ fiabilite, couts, productivite, model
               <span className="kpi-model-target">Target/Cible {modele.precision_target}%</span>
               <SmallDonut pct={modele.precision} color="#f97316" size={32} />
             </div>
-            <div className="kpi-model-status success">✅ Atteint</div>
+              <div className="kpi-model-status success">Atteint</div>
           </div>
 
           {/* Faux Positifs - ligne 2 */}
@@ -169,7 +170,7 @@ export const KPICard: React.FC<Props> = ({ fiabilite, couts, productivite, model
               <span className="kpi-model-target">&lt;{modele.faux_positifs_cible}%</span>
               <div className="kpi-zero-badge">{modele.faux_positifs_pct}%</div>
             </div>
-            <div className="kpi-model-status success">✅ Atteint</div>
+              <div className="kpi-model-status success">Atteint</div>
           </div>
 
           {/* Lead Time - ligne 3 */}
@@ -180,7 +181,7 @@ export const KPICard: React.FC<Props> = ({ fiabilite, couts, productivite, model
               <span className="kpi-model-target">Cible {modele.lead_time_progress}h</span>
               <div className="kpi-lead-badge">{modele.lead_time_h}h</div>
             </div>
-            <div className="kpi-model-status success">✅ Atteint</div>
+              <div className="kpi-model-status success">Atteint</div>
           </div>
         </div>
       </div>

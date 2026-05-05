@@ -1,0 +1,19 @@
+# backend/requirements.txt
+fastapi
+uvicorn[standard]
+sqlalchemy
+python-multipart
+pandas
+openpyxl
+numpy
+matplotlib
+seaborn
+scipy
+scikit-learn
+fpdf2
+anthropic
+chardet
+python-dotenv
+liac-arff
+zipfile36
+aiofiles

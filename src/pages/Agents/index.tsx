@@ -1,18 +1,7 @@
 import React from "react";
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Bot } from 'lucide-react';
 import "./agents.css";
-import { 
-  Home, 
-  Database, 
-  GraduationCap, 
-  Package, 
-  Sparkles, 
-  Wrench, 
-  Bot, 
-  Settings,
-  Bell,
-  ChevronDown,
-} from 'lucide-react';
+import AppLayout from "../../components/AppLayout";
 
 import FluxCard from "./components/FluxCard";
 import CompatibilityCard from "./components/CompatibilityCard";
@@ -103,98 +92,26 @@ const chartData: PerformanceBarPoint[] = [
   { label: 40, f1Score: 0.89, recall: 0.80 },
 ];
 
-// ─── Nav items ────────────────────────────────────────────────────────────────
-const NAV_ITEMS = [
-  { label: 'Tableau de bord', icon: Home, path: '/' },
-  { label: 'Données',         icon: Database, path: '/donnees' },
-  { label: 'Entraînement',    icon: GraduationCap, path: '/entrainement' },
-  { label: 'Modèles',         icon: Package, path: '/models' },
-  { label: 'Prédictions',     icon: Sparkles, path: '/predictions' },
-  { label: 'Outils',          icon: Wrench, path: '/outils' },
-  { label: 'Agents',          icon: Bot, path: '/agents', active: true },
-];
+// Navigation centralisée dans AppLayout — voir src/components/AppLayout/index.tsx
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 const AgentsPage: React.FC = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-
   return (
-    <div className="agents-page">
-      <div className="app-shell">
-        {/* Sidebar */}
-        <aside className="sidebar">
-          {/* Logo */}
-          <div className="sidebar-logo">
-            <div className="sidebar-logo-icon">🤖</div>
-            <div className="sidebar-logo-text">
-              AI MAINTENANCE
-              <span>Système intelligent</span>
-            </div>
-          </div>
-
-          {/* Navigation */}
-          <nav className="sidebar-nav">
-            {NAV_ITEMS.map((item) => (
-              <button
-                key={item.path}
-                className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
-                onClick={() => navigate(item.path)}
-              >
-                <item.icon size={17} className="nav-icon-svg" />
-                <span className="nav-label">{item.label}</span>
-              </button>
-            ))}
-          </nav>
-
-          {/* Footer */}
-          <div className="sidebar-footer">
-            <button
-              className={`nav-item ${location.pathname === '/parametres' ? 'active' : ''}`}
-              onClick={() => navigate('/parametres')}
-            >
-              <Settings size={17} className="nav-icon-svg" />
-              <span className="nav-label">Paramètres</span>
-            </button>
-
-            <div className="sidebar-help">
-              <h4>Besoin d'aide?</h4>
-              <p>Voir la documentation</p>
-              <a href="#">› Voir la documentation</a>
-            </div>
-          </div>
-        </aside>
-
-        {/* Main content */}
-        <div className="main">
-          {/* Topbar */}
-          <header className="topbar">
-            <div className="topbar-left">
-              <h1>Agents</h1>
-              <p>Gérer les flux de données, les prédictions et la délégation d'agents</p>
-            </div>
-            <div className="topbar-right">
-              <button className="topbar-notif">
-                <Bell size={18} />
-                <span className="notif-badge">1</span>
-              </button>
-              <button className="topbar-user">
-                <div className="user-avatar">A</div>
-                Admin <ChevronDown size={14} />
-              </button>
-            </div>
-          </header>
-
-          {/* Page content */}
-          <div className="page-content">
-            <FluxCard status="En Ligne" />
-            <CompatibilityCard entries={compatData} />
-            <DelegationCard agents={agentData} />
-            <PerformanceCard tools={toolData} chartData={chartData} />
-          </div>
+    <AppLayout
+      title="Agents"
+      subtitle="Gérer les flux de données, les prédictions et la délégation d'agents"
+      icon={Bot}
+      notifCount={1}
+    >
+      <div className="agents-page">
+        <div className="page-content">
+          <FluxCard status="En Ligne" />
+          <CompatibilityCard entries={compatData} />
+          <DelegationCard agents={agentData} />
+          <PerformanceCard tools={toolData} chartData={chartData} />
         </div>
       </div>
-    </div>
+    </AppLayout>
   );
 };
 

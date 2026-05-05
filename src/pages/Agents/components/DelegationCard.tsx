@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Bot, Users } from "lucide-react";
 import type { Agent } from "../types";
 
 interface Props {
@@ -36,11 +37,12 @@ const AgentRow: React.FC<{ agent: Agent; depth?: number }> = ({ agent, depth = 0
                 width: 28, height: 28,
                 borderRadius: 8,
                 background: depth === 0 ? "rgba(255,107,0,.12)" : "rgba(99,102,241,.10)",
+                color: depth === 0 ? "#f97316" : "#6366f1",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 14, flexShrink: 0
+                flexShrink: 0
               }}
             >
-              🤖
+              <Bot size={14} />
             </div>
             <div>
               <div className="agent-name">{agent.name}</div>
@@ -74,7 +76,7 @@ const DelegationCard: React.FC<Props> = ({ agents }) => {
       {/* Header */}
       <div className="card-header">
         <div className="card-header-left">
-          <div className="card-icon" style={{ background: "rgba(99,102,241,.10)", fontSize: 16 }}>👥</div>
+          <div className="card-icon" style={{ background: "rgba(99,102,241,.10)", display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6366f1' }}><Users size={15} /></div>
           <div>
             <div className="card-title">Délégation d'Agents</div>
           </div>

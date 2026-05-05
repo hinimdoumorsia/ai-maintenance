@@ -91,7 +91,7 @@ const PerformanceChart: React.FC = () => {
               key={tab}
               onClick={() => setActiveTab(tab)}
               style={{
-                background: activeTab === tab ? '#fff' : 'transparent',
+                background: activeTab === tab ? 'var(--bg-card)' : 'transparent',
                 border: 'none',
                 borderRadius: 6,
                 padding: '4px 12px',

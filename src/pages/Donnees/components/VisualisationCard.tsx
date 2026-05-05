@@ -2,6 +2,7 @@
 // Panneau haut droite : Visualisation Complète des Données
 
 import React from 'react';
+import { BarChart2 } from 'lucide-react';
 import { StatistiqueApercu, Observation } from '../types';
 
 interface Props {
@@ -97,7 +98,7 @@ export const VisualisationCard: React.FC<Props> = ({ apercu, observations }) => 
   return (
     <div className="card visualisation-card">
       <h2 className="card-title">
-        <span className="card-icon">📊</span>
+        <BarChart2 size={16} style={{ flexShrink: 0, color: '#f97316' }} />
         Visualisation Complète des Données
       </h2>
 

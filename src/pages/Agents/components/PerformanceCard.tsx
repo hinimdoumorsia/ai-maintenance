@@ -1,4 +1,5 @@
 import React from "react";
+import { Activity } from "lucide-react";
 import type { ToolPerformance, PerformanceBarPoint } from "../types";
 
 interface Props {
@@ -14,7 +15,7 @@ const PerformanceCard: React.FC<Props> = ({ tools, chartData }) => {
       {/* Header */}
       <div className="card-header">
         <div className="card-header-left">
-          <div className="card-icon" style={{ background: "rgba(16,185,129,.10)", fontSize: 16 }}>📶</div>
+          <div className="card-icon" style={{ background: "rgba(16,185,129,.10)", display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}><Activity size={15} /></div>
           <div>
             <div className="card-title">Performance des Outils</div>
           </div>

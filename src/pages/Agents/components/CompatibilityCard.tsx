@@ -1,4 +1,5 @@
 import React from "react";
+import { CheckCircle2, AlertTriangle, XCircle, Globe } from "lucide-react";
 import type { CompatibilityEntry } from "../types";
 
 interface Props {
@@ -13,9 +14,9 @@ const CompatibilityCard: React.FC<Props> = ({ entries }) => {
   };
 
   const badgeIcon = (status: CompatibilityEntry["status"]) => {
-    if (status === "Compatible") return "✅";
-    if (status === "Alert") return "⚠️";
-    return "❌";
+    if (status === "Compatible") return <CheckCircle2 size={13} />;
+    if (status === "Alert") return <AlertTriangle size={13} />;
+    return <XCircle size={13} />;
   };
 
   return (
@@ -23,7 +24,9 @@ const CompatibilityCard: React.FC<Props> = ({ entries }) => {
       {/* Header */}
       <div className="card-header">
         <div className="card-header-left">
-          <div className="card-icon" style={{ background: "rgba(99,102,241,.10)", fontSize: 16 }}>🌐</div>
+          <div className="card-icon" style={{ background: "rgba(99,102,241,.10)", color: "#6366f1" }}>
+            <Globe size={16} />
+          </div>
           <div>
             <div className="card-title">Statut de Compatibilité</div>
             <div className="card-subtitle">Compatibilités status en sous des données</div>
