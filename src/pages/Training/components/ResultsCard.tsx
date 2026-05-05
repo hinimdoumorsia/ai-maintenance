@@ -1,90 +1,168 @@
 import React from "react";
-import { Settings } from "lucide-react";
-import { TrainingResults } from "../types";
+import { Settings, TrendingUp, TrendingDown, CheckCircle, AlertCircle } from "lucide-react";
 
 interface ResultsCardProps {
-  results: TrainingResults | null;
+  results: any;
+  logs?: any[];
 }
 
-const LOSS = [0.9, 0.75, 0.6, 0.5, 0.42, 0.35, 0.3, 0.26, 0.22, 0.19, 0.17];
-const ACC  = [0.5, 0.6, 0.68, 0.74, 0.79, 0.83, 0.86, 0.88, 0.9, 0.91, 0.917];
-
-const W = 280, H = 110;
-const PAD = { top: 10, right: 10, bottom: 24, left: 10 };
-const PW = W - PAD.left - PAD.right;
-const PH = H - PAD.top - PAD.bottom;
-
-function toX(i: number, total: number) { return PAD.left + (i / (total - 1)) * PW; }
-function toY(v: number, min = 0, max = 1) { return PAD.top + PH - ((v - min) / (max - min)) * PH; }
-function poly(data: number[]) { return data.map((v, i) => `${toX(i, data.length)},${toY(v)}`).join(" "); }
-
-const ResultsCard: React.FC<ResultsCardProps> = ({ results }) => {
-  const epochs = LOSS.map((_, i) => i * 5);
+const ResultsCard: React.FC<ResultsCardProps> = ({ results, logs = [] }) => {
+  console.log("ResultsCard - résultats reçus:", results);
+  console.log("ResultsCard - logs reçus:", logs);
+  
+  let baselineScore = 0;
+  let cleanedScore = 0;
+  let winner = "baseline";
+  let primaryMetric = "accuracy";
+  
+  // Essayer d'extraire depuis results
+  if (results) {
+    const comparison = results.comparison || results;
+    baselineScore = comparison.baseline_score || 0;
+    cleanedScore = comparison.cleaned_score || 0;
+    winner = comparison.winner || (cleanedScore > baselineScore ? "cleaned" : "baseline");
+    primaryMetric = comparison.primary_metric || "accuracy";
+  }
+  
+  // Si pas de résultats, essayer d'extraire depuis les logs
+  if (baselineScore === 0 && cleanedScore === 0 && logs.length > 0) {
+    const trainLog = logs.find(l => l.title === "Résultat : train_model");
+    if (trainLog && trainLog.detail) {
+      const match = trainLog.detail.match(/baseline=([\d.]+)\s*\|\s*cleaned=([\d.]+)/);
+      if (match) {
+        baselineScore = parseFloat(match[1]);
+        cleanedScore = parseFloat(match[2]);
+        winner = cleanedScore > baselineScore ? "cleaned" : "baseline";
+        console.log("Scores extraits des logs:", { baselineScore, cleanedScore });
+      }
+    }
+  }
+  
+  // Aucune donnée disponible
+  if (baselineScore === 0 && cleanedScore === 0) {
+    return (
+      <div className="card results-training-card">
+        <div className="card-section-label" style={{ marginBottom: 12 }}>
+          <span className="results-bar-icon" />
+          <h3 className="section-title">Résultats</h3>
+        </div>
+        <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}>
+          <Settings size={32} style={{ marginBottom: 12, opacity: 0.5 }} />
+          <p>Les résultats apparaîtront ici après l'entraînement</p>
+        </div>
+      </div>
+    );
+  }
+  
+  const bestScore = Math.max(baselineScore, cleanedScore);
+  const delta = cleanedScore - baselineScore;
+  const deltaPositive = delta >= 0;
+  const bestRun = baselineScore > cleanedScore ? "Baseline" : "Cleaned";
 
   return (
     <div className="card results-training-card">
       <div className="card-section-label" style={{ marginBottom: 12 }}>
         <span className="results-bar-icon" />
-        <h3 className="section-title">Résultats</h3>
+        <h3 className="section-title">Résultats de l'entraînement</h3>
       </div>
 
-      <div className="model-used-row">
-        <div className="model-used-icon">
-          <Settings size={18} color="#2563EB" />
-        </div>
-        <div>
-          <p className="model-used-label">Modele utillee</p>
-          <p className="model-used-name">LSTM <span className="model-badge">Mode I:desionale</span></p>
-        </div>
-      </div>
-
+      {/* Métriques principales */}
       <div className="metrics-grid">
         <div className="metric-chip blue">
-          <span className="metric-label">Accuracy</span>
-          <span className="metric-value">91.7%</span>
+          <span className="metric-label">{primaryMetric.toUpperCase()}</span>
+          <span className="metric-value">{(bestScore * 100).toFixed(1)}%</span>
+          <span className="metric-badge">{bestRun}</span>
         </div>
         <div className="metric-chip orange">
-          <span className="metric-label">Precision</span>
-          <span className="metric-value">89.3%</span>
+          <span className="metric-label">Baseline</span>
+          <span className="metric-value">{(baselineScore * 100).toFixed(1)}%</span>
+          <span className="metric-sub">(sans outliers)</span>
         </div>
         <div className="metric-chip green">
-          <span className="metric-label">Recall</span>
-          <span className="metric-value">98.1%</span>
+          <span className="metric-label">Cleaned</span>
+          <span className="metric-value">{(cleanedScore * 100).toFixed(1)}%</span>
+          <span className="metric-sub">(avec outliers traités)</span>
         </div>
-        <div className="metric-chip purple">
-          <span className="metric-label">F1-Score</span>
-          <span className="metric-value">91.2%</span>
+        <div className={`metric-chip ${deltaPositive ? "purple" : "red"}`}>
+          <span className="metric-label">Delta</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            {deltaPositive ? (
+              <TrendingUp size={14} color="#22c55e" />
+            ) : (
+              <TrendingDown size={14} color="#ef4444" />
+            )}
+            <span className="metric-value" style={{ color: deltaPositive ? "#22c55e" : "#ef4444" }}>
+              {delta > 0 ? `+${(delta * 100).toFixed(1)}` : `${(delta * 100).toFixed(1)}`}%
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="history-section">
-        <div className="history-header">
-          <p className="history-title">Training History</p>
-          <div className="history-legend">
-            <span className="hist-leg"><span className="hist-dot blue" />Loss</span>
-            <span className="hist-leg"><span className="hist-dot orange" />Accurnr</span>
+      {/* Détails supplémentaires */}
+      <div className="additional-metrics" style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #F3F4F6" }}>
+        <p className="additional-title" style={{ fontSize: 12, fontWeight: 500, marginBottom: 8, color: "#6B7280" }}>
+          Détails de l'entraînement
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+          <div style={{ fontSize: 12, color: "#374151" }}>
+            <span style={{ fontWeight: 500 }}>Meilleur run:</span> {winner === "cleaned" ? "Cleaned" : "Baseline"}
+          </div>
+          <div style={{ fontSize: 12, color: "#374151" }}>
+            <span style={{ fontWeight: 500 }}>Amélioration:</span> {deltaPositive ? "+" : ""}{(Math.abs(delta) * 100).toFixed(2)}%
+          </div>
+          <div style={{ fontSize: 12, color: "#374151" }}>
+            <span style={{ fontWeight: 500 }}>Score final:</span> {(bestScore * 100).toFixed(2)}%
           </div>
         </div>
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxHeight: 110 }}>
-          {/* Grid */}
-          {[0, 0.5, 1].map(v => (
-            <line key={v} x1={PAD.left} x2={W - PAD.right} y1={toY(v)} y2={toY(v)}
-              stroke="#F3F4F6" strokeWidth={1} />
-          ))}
-          {/* Y axis labels */}
-          {[0, 0.5, 1].map(v => (
-            <text key={v} x={PAD.left - 2} y={toY(v) + 4} fontSize={8} fill="#9CA3AF" textAnchor="end">{v}</text>
-          ))}
-          {/* X axis labels */}
-          {epochs.filter((_, i) => i % 2 === 0).map((e, i) => (
-            <text key={e} x={toX(i * 2, LOSS.length)} y={H - 4} fontSize={8} fill="#9CA3AF" textAnchor="middle">{e}</text>
-          ))}
-          {/* Loss (blue, decreasing) */}
-          <polyline points={poly(LOSS)} fill="none" stroke="#2563EB" strokeWidth={2} />
-          {/* Accuracy (orange, increasing) */}
-          <polyline points={poly(ACC)} fill="none" stroke="#F97316" strokeWidth={2} />
-        </svg>
       </div>
+
+      {/* Information sur le résultat */}
+      <div className="winner-info" style={{ 
+        marginTop: 16, 
+        padding: 12, 
+        backgroundColor: "#F3E8FF", 
+        borderRadius: 8,
+        display: "flex",
+        alignItems: "center",
+        gap: 8
+      }}>
+        <span style={{ fontSize: 12, color: "#6B21A5" }}>
+          📊 Modèle entraîné avec succès - Baseline: {(baselineScore * 100).toFixed(1)}% / Cleaned: {(cleanedScore * 100).toFixed(1)}%
+        </span>
+      </div>
+
+      <style>{`
+        .metric-chip {
+          border-radius: 12px;
+          padding: 12px 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .metric-chip.blue { background: #EFF6FF; }
+        .metric-chip.orange { background: #FFF7ED; }
+        .metric-chip.green { background: #F0FDF4; }
+        .metric-chip.purple { background: #F5F3FF; }
+        .metric-chip.red { background: #FEF2F2; }
+        .metric-label { font-size: 11px; font-weight: 500; color: #6B7280; }
+        .metric-value { font-size: 20px; font-weight: 700; }
+        .metric-sub { font-size: 9px; color: #9CA3AF; margin-top: 2px; }
+        .metric-chip.blue .metric-value { color: #2563EB; }
+        .metric-chip.orange .metric-value { color: #F97316; }
+        .metric-chip.green .metric-value { color: #22c55e; }
+        .metric-chip.purple .metric-value { color: #8B5CF6; }
+        .metric-chip.red .metric-value { color: #ef4444; }
+        .metric-badge {
+          font-size: 9px;
+          background-color: rgba(0,0,0,0.08);
+          padding: 2px 6px;
+          border-radius: 20px;
+          margin-left: 8px;
+          font-weight: normal;
+          display: inline-block;
+          width: fit-content;
+        }
+      `}</style>
     </div>
   );
 };

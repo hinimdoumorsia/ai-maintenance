@@ -1,33 +1,64 @@
 import React, { useState, useRef } from "react";
-import { Upload, CheckCircle, ChevronDown } from "lucide-react";
-import { TrainingDataset, SensorRow } from "../types";
-
-const MOCK_ROWS: SensorRow[] = [
-  { timestamp: "2024-01 15 10:00:00", machine_id: "MCH-001", temperature: 75.4, vibration: 0.023, pressure: 1.24, status: "OK" },
-  { timestamp: "2024-01 15 10:01:00", machine_id: "MCH-001", temperature: 76.1, vibration: 0.025, pressure: 1.21, status: "OK" },
-  { timestamp: "2024-01 15 10:02:00", machine_id: "MCH-002", temperature: 68.9, vibration: 0.018, pressure: 1.15, status: "OK" },
-];
+import { Upload, CheckCircle, ChevronDown, FileText, Loader2 } from "lucide-react";
+import { TrainingDataset } from "../types";
 
 interface DatasetUploadProps {
   onLoaded: (ds: TrainingDataset) => void;
+  onFileSelected: (file: File) => void;
+  uploadedFileName?: string;
+  isUploading?: boolean;
 }
 
-const DatasetUpload: React.FC<DatasetUploadProps> = ({ onLoaded }) => {
+const DatasetUpload: React.FC<DatasetUploadProps> = ({ 
+  onLoaded, 
+  onFileSelected, 
+  uploadedFileName, 
+  isUploading = false 
+}) => {
   const [dragging, setDragging] = useState(false);
   const [dataset, setDataset] = useState<TrainingDataset | null>(null);
-  const [showTable, setShowTable] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [selectedFileInfo, setSelectedFileInfo] = useState<{ name: string; size: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const load = (name: string) => {
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
+
+  const load = (file: File) => {
+    // Créer un objet TrainingDataset avec les infos de base
     const ds: TrainingDataset = {
-      fileName: name,
-      fileSize: "12.4 MB",
-      rows: 15231,
-      columns: 24,
-      data: MOCK_ROWS,
+      fileName: file.name,
+      fileSize: formatFileSize(file.size),
+      rows: 0, // Sera mis à jour après l'API
+      columns: 0,
+      data: [],
     };
+    
     setDataset(ds);
+    setSelectedFileInfo({
+      name: file.name,
+      size: formatFileSize(file.size)
+    });
     onLoaded(ds);
+    onFileSelected(file);
+  };
+
+  const handleFileChange = (file: File) => {
+    // Vérifier l'extension
+    const validExtensions = ['.csv', '.xlsx', '.xls', '.json'];
+    const fileExt = '.' + file.name.split('.').pop()?.toLowerCase();
+    
+    if (!validExtensions.includes(fileExt)) {
+      alert(`Format non supporté. Utilisez: ${validExtensions.join(', ')}`);
+      return;
+    }
+    
+    load(file);
   };
 
   return (
@@ -36,69 +67,129 @@ const DatasetUpload: React.FC<DatasetUploadProps> = ({ onLoaded }) => {
         <span className="step-badge">1</span>
         <div>
           <h3 className="section-title">Upload Dataset</h3>
-          <p className="section-subtitle">Upload your data sa préfeminéré</p>
+          <p className="section-subtitle">Téléchargez votre fichier de données</p>
         </div>
       </div>
 
       <div
-        className={`drop-zone ${dragging ? "dragging" : ""}`}
+        className={`drop-zone ${dragging ? "dragging" : ""} ${isUploading ? "uploading" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
-        onDrop={(e) => { e.preventDefault(); setDragging(false); load("dropped_file.csv"); }}
+        onDrop={(e) => { 
+          e.preventDefault(); 
+          setDragging(false); 
+          const file = e.dataTransfer.files?.[0];
+          if (file) handleFileChange(file);
+        }}
       >
         <div className="drop-icon">
-          <Upload size={30} color="white" />
+          {isUploading ? (
+            <Loader2 size={30} color="white" className="spin" />
+          ) : (
+            <Upload size={30} color="white" />
+          )}
         </div>
-        <p className="drop-label">Glissez-déposez vtoué ffeir hér</p>
+        <p className="drop-label">
+          {isUploading ? "Chargement en cours..." : "Glissez-déposez votre fichier ici"}
+        </p>
         <p className="drop-or">ou</p>
-        <button className="btn-primary" onClick={() => fileRef.current?.click()}>
+        <button 
+          className="btn-primary" 
+          onClick={() => fileRef.current?.click()}
+          disabled={isUploading}
+        >
           Parcourir les fichiers
         </button>
-        <input ref={fileRef} type="file" accept=".csv,.xlsx,.json" hidden
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) load(f.name); }} />
+        <input 
+          ref={fileRef} 
+          type="file" 
+          accept=".csv,.xlsx,.xls,.json" 
+          hidden
+          onChange={(e) => { 
+            const file = e.target.files?.[0]; 
+            if (file) handleFileChange(file);
+          }} 
+        />
         <p className="drop-hint">Formats pris en charge: CSV, XLSX, JSON</p>
       </div>
 
-      {dataset && (
+      {(dataset || uploadedFileName) && (
         <div className="preview-section">
           <div className="preview-header">
             <div className="preview-title-row">
-              <CheckCircle size={17} color="#22c55e" />
+              {isUploading ? (
+                <Loader2 size={17} color="#F97316" className="spin" />
+              ) : (
+                <CheckCircle size={17} color="#22c55e" />
+              )}
               <div>
-                <p className="preview-name">Dataset Aperçu</p>
-                <p className="preview-meta">{dataset.fileName}</p>
-                <p className="preview-meta">{dataset.fileSize} · {dataset.rows.toLocaleString()} rows · {dataset.columns} columns</p>
+                <p className="preview-name">Fichier chargé</p>
+                <p className="preview-meta">{uploadedFileName || dataset?.fileName}</p>
+                <p className="preview-meta">
+                  {selectedFileInfo?.size || dataset?.fileSize}
+                  {dataset && dataset.rows > 0 && ` · ${dataset.rows.toLocaleString()} lignes · ${dataset.columns} colonnes`}
+                </p>
               </div>
             </div>
-            <button className="preview-toggle" onClick={() => setShowTable(!showTable)}>
-              Aperçu <ChevronDown size={13} style={{ transform: showTable ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
+            <button 
+              className="preview-toggle" 
+              onClick={() => setShowPreview(!showPreview)}
+              disabled={!dataset || dataset.rows === 0}
+            >
+              Aperçu <ChevronDown size={13} style={{ transform: showPreview ? "rotate(180deg)" : "none" }} />
             </button>
           </div>
-          {showTable && (
+          {showPreview && dataset && dataset.data && dataset.data.length > 0 && (
             <div className="data-table-wrap">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>timestamp</th><th>machine_id</th><th>temperature</th>
-                    <th>vibration</th><th>pressure</th><th>status</th>
+                    {Object.keys(dataset.data[0]).map((key) => (
+                      <th key={key}>{key}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {dataset.data.map((r, i) => (
+                  {dataset.data.slice(0, 5).map((row, i) => (
                     <tr key={i}>
-                      <td>{r.timestamp}</td><td>{r.machine_id}</td>
-                      <td>{r.temperature}</td><td>{r.vibration}</td>
-                      <td>{r.pressure}</td>
-                      <td><span className="status-ok">{r.status}</span></td>
+                      {Object.values(row).map((val, j) => (
+                        <td key={j}>{String(val)}</td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
-              </table>
-              <p className="table-footer">Affichage d 3 sur 15.231 lignes</p>
+               </table>
+              <p className="table-footer">
+                Affichage de 5 sur {dataset.rows.toLocaleString()} lignes
+              </p>
+            </div>
+          )}
+          {showPreview && dataset && dataset.rows === 0 && (
+            <div className="preview-placeholder" style={{ padding: 20, textAlign: "center", color: "#9CA3AF" }}>
+              <FileText size={24} />
+              <p>Aperçu disponible après l'analyse</p>
             </div>
           )}
         </div>
       )}
+
+      <style>{`
+        .spin {
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .drop-zone.uploading {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+        .preview-toggle:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      `}</style>
     </div>
   );
 };

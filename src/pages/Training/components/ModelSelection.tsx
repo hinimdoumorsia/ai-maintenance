@@ -1,11 +1,13 @@
-import React, { useState } from "react";
-import { Bot, SlidersHorizontal, GitBranch, Layers, Activity } from "lucide-react";
+import React from "react";
+import { Bot, SlidersHorizontal, GitBranch, Activity, Sparkles, Zap } from "lucide-react";
 import { MLModel, ModelId, SelectionMode } from "../types";
 
 const MODELS: MLModel[] = [
-  { id: "random_forest", name: "Random Forest", description: "Parffit pour les données tabulines", icon: "tree" },
-  { id: "xgboost", name: "XGBoost", description: "High performance de gradient", icon: "xg" },
-  { id: "lstm", name: "LSTM", description: "Parffit pour les séries temporelles", icon: "wave" },
+  { id: "random_forest", name: "Random Forest", description: "Parfait pour les données tabulaires, robuste", icon: "tree" },
+  { id: "extra_trees", name: "Extra Trees", description: "Plus aléatoire, moins de surapprentissage", icon: "tree" },
+  { id: "xgboost", name: "XGBoost", description: "Haute performance par gradient boosting", icon: "xg" },
+  { id: "lightgbm", name: "LightGBM", description: "Rapide et efficace en mémoire", icon: "zap" },
+  { id: "catboost", name: "CatBoost", description: "Gère automatiquement les catégories et dates", icon: "sparkles" },
 ];
 
 interface ModelSelectionProps {
@@ -18,6 +20,8 @@ interface ModelSelectionProps {
 const ModelIcon: React.FC<{ icon: string }> = ({ icon }) => {
   if (icon === "tree") return <GitBranch size={20} color="#2563EB" />;
   if (icon === "xg") return <span style={{ fontWeight: 800, fontSize: 14, color: "#2563EB" }}>XG</span>;
+  if (icon === "zap") return <Zap size={20} color="#2563EB" />;
+  if (icon === "sparkles") return <Sparkles size={20} color="#2563EB" />;
   return <Activity size={20} color="#2563EB" />;
 };
 
@@ -28,7 +32,7 @@ const ModelSelection: React.FC<ModelSelectionProps> = ({ selected, onSelect, mod
         <span className="step-badge">2</span>
         <div>
           <h3 className="section-title">Sélection du Modèle</h3>
-          <p className="section-subtitle">Shiose drow to rain yon tunoniida</p>
+          <p className="section-subtitle">Choisissez votre algorithme d'entraînement</p>
         </div>
       </div>
 
@@ -44,13 +48,13 @@ const ModelSelection: React.FC<ModelSelectionProps> = ({ selected, onSelect, mod
           className={`mode-btn ${mode === "manual" ? "active" : ""}`}
           onClick={() => onModeChange("manual")}
         >
-          <SlidersHorizontal size={15} /> Menual
+          <SlidersHorizontal size={15} /> Manuel
         </button>
       </div>
 
       {mode === "auto" && (
         <p className="auto-description">
-          Laissez notre agent IA analyzer vos données et choisir le meilleur modèle.
+          Laissez notre agent IA analyser vos données et choisir le meilleur modèle pour vous.
         </p>
       )}
 
@@ -61,6 +65,8 @@ const ModelSelection: React.FC<ModelSelectionProps> = ({ selected, onSelect, mod
             key={m.id}
             className={`model-card-row ${selected === m.id ? "selected" : ""}`}
             onClick={() => onSelect(m.id)}
+            disabled={mode === "auto"}
+            style={{ opacity: mode === "auto" ? 0.6 : 1, cursor: mode === "auto" ? "not-allowed" : "pointer" }}
           >
             <div className="model-card-icon">
               <ModelIcon icon={m.icon} />
@@ -73,6 +79,12 @@ const ModelSelection: React.FC<ModelSelectionProps> = ({ selected, onSelect, mod
           </button>
         ))}
       </div>
+
+      <style>{`
+        .model-card-row:disabled {
+          cursor: not-allowed;
+        }
+      `}</style>
     </div>
   );
 };

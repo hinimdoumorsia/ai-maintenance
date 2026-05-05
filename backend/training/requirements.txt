@@ -1,0 +1,12 @@
+pandas
+numpy
+scikit-learn
+scipy
+xgboost
+mlflow
+groq
+fastapi
+uvicorn[standard]
+python-multipart
+openpyxl
+python-dotenv

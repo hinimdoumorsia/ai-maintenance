@@ -1,21 +1,62 @@
 import React from "react";
-import { Settings, MessageSquare, ArrowRight, Settings2 } from "lucide-react";
+import { Settings, MessageSquare, ArrowRight, Settings2, Target } from "lucide-react";
 import { AgentOptions as AgentOptionsType } from "../types";
 
 interface AgentOptionsProps {
   options: AgentOptionsType;
   onChange: (opts: AgentOptionsType) => void;
+  targetCol: string;
+  onTargetColChange: (col: string) => void;
+  availableColumns?: string[];
 }
 
-const AgentOptionsCard: React.FC<AgentOptionsProps> = ({ options, onChange }) => {
+const AgentOptionsCard: React.FC<AgentOptionsProps> = ({ 
+  options, 
+  onChange, 
+  targetCol, 
+  onTargetColChange, 
+  availableColumns = [] 
+}) => {
   return (
     <div className="card agent-options-card">
       <div className="card-section-label">
         <span className="step-badge orange">3</span>
         <div>
           <h3 className="section-title">Options de l'Agent</h3>
-          <p className="section-subtitle">Confiiure: atetuatïon aim lit ségnttatour</p>
+          <p className="section-subtitle">Configurez l'entraînement de votre modèle</p>
         </div>
+      </div>
+
+      {/* Colonne cible - NOUVEAU */}
+      <div className="agent-option-row" style={{ marginBottom: 16 }}>
+        <div className="agent-option-icon-wrap purple">
+          <Target size={16} color="#9333EA" />
+        </div>
+        <div className="agent-option-text">
+          <p className="agent-option-title">Colonne cible</p>
+          <p className="agent-option-desc">Quelle colonne voulez-vous prédire ?</p>
+        </div>
+        <input
+          type="text"
+          className="target-input"
+          placeholder="ex: failure, price, temperature"
+          value={targetCol}
+          onChange={(e) => onTargetColChange(e.target.value)}
+          list="target-options"
+          style={{
+            padding: "8px 12px",
+            border: "1px solid #E5E7EB",
+            borderRadius: 8,
+            fontSize: 14,
+            width: 180,
+            backgroundColor: "white",
+          }}
+        />
+        {availableColumns.length > 0 && (
+          <datalist id="target-options">
+            {availableColumns.map(col => <option key={col} value={col} />)}
+          </datalist>
+        )}
       </div>
 
       {/* Auto-train toggle */}
@@ -24,8 +65,8 @@ const AgentOptionsCard: React.FC<AgentOptionsProps> = ({ options, onChange }) =>
           <Settings size={16} color="#2563EB" />
         </div>
         <div className="agent-option-text">
-          <p className="agent-option-title">Auto-entrainer si ncompatible</p>
-          <p className="agent-option-desc">Ponlaites ntàin aod te reina in o ntatins as le reprmsesins tran ipp. compatible, enasants</p>
+          <p className="agent-option-title">Auto-entraînement</p>
+          <p className="agent-option-desc">L'agent choisit automatiquement la meilleure configuration</p>
         </div>
         <button
           className={`toggle-switch ${options.autoTrain ? "on" : ""}`}
@@ -43,7 +84,7 @@ const AgentOptionsCard: React.FC<AgentOptionsProps> = ({ options, onChange }) =>
         </div>
         <div className="agent-option-text">
           <p className="agent-option-title">Expliquer les décisions</p>
-          <p className="agent-option-desc">Fntniair lorn autoïnement, sutax:journaux de oettion de lagent</p>
+          <p className="agent-option-desc">Afficher les journaux détaillés de l'agent</p>
         </div>
         <button
           className={`toggle-switch ${options.explainDecisions ? "on" : ""}`}
@@ -64,11 +105,15 @@ const AgentOptionsCard: React.FC<AgentOptionsProps> = ({ options, onChange }) =>
           </div>
           <div className="agent-info-item">
             <ArrowRight size={13} color="#2563EB" />
-            <span>Detecto nlèr le meilleur modèle</span>
+            <span>Détecter et traiter les outliers intelligemment</span>
           </div>
           <div className="agent-info-item">
             <ArrowRight size={13} color="#2563EB" />
-            <span>Entramer et optimize</span>
+            <span>Entraîner et comparer les modèles</span>
+          </div>
+          <div className="agent-info-item">
+            <ArrowRight size={13} color="#2563EB" />
+            <span>Sauvegarder le meilleur modèle dans MLflow</span>
           </div>
         </div>
       </div>
@@ -77,6 +122,24 @@ const AgentOptionsCard: React.FC<AgentOptionsProps> = ({ options, onChange }) =>
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
         <Settings2 size={20} color="#9CA3AF" />
       </div>
+
+      <style>{`
+        .agent-option-icon-wrap.purple {
+          background-color: #F3E8FF;
+          border-radius: 10px;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-right: 12px;
+        }
+        .target-input:focus {
+          outline: none;
+          border-color: #F97316;
+          box-shadow: 0 0 0 2px rgba(249,115,22,0.2);
+        }
+      `}</style>
     </div>
   );
 };

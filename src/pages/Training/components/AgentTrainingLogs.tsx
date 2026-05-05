@@ -2,38 +2,11 @@ import React from "react";
 import { Database, Lightbulb, Cpu, Play, Save, Trash2 } from "lucide-react";
 import { AgentLogEntry } from "../types";
 
-const LOGS: AgentLogEntry[] = [
-  {
-    time: "10.24:15",
-    title: "Dataset analysed:",
-    detail: "Detected time series data Shape: [15221, 23], Miasling valbes: 2.3%",
-    type: "dataset",
-  },
-  {
-    time: "10.24:10",
-    title: "Expliquer les decisions",
-    detail: "Phe etiido temporoement in les journato model dlo estares",
-    type: "explain",
-  },
-  {
-    time: "10.24:17",
-    title: "Data prepicessing …",
-    detail: "Sealed: 23 Matures, crîatiés applec: 0.001",
-    type: "preprocess",
-  },
-  {
-    time: "10.24:29",
-    title: "Training stareed",
-    detail: "Epochs: 50, Batth:cr: 39, Learning rate: 0.001",
-    type: "training",
-  },
-  {
-    time: "10.25:48",
-    title: "Model saved",
-    detail: "casec: :Eally  Path:models/ietm_model_ut:0:h5",
-    type: "model",
-  },
-];
+interface AgentTrainingLogsProps {
+  logs?: AgentLogEntry[];
+  onClear?: () => void;
+  isRunning?: boolean;
+}
 
 const IconMap: Record<AgentLogEntry["type"], React.ReactNode> = {
   dataset:    <Database size={13} color="#F97316" />,
@@ -43,7 +16,16 @@ const IconMap: Record<AgentLogEntry["type"], React.ReactNode> = {
   model:      <Save size={13} color="#F97316" />,
 };
 
-const AgentTrainingLogs: React.FC = () => {
+const AgentTrainingLogs: React.FC<AgentTrainingLogsProps> = ({ logs = [], onClear, isRunning = false }) => {
+  const handleClear = () => {
+    if (onClear) {
+      onClear();
+    }
+  };
+
+  // Utiliser les logs passés en props s'il y en a, sinon les logs mockés par défaut
+  const displayLogs = logs.length > 0 ? logs : [];
+
   return (
     <div className="card agent-logs-training-card">
       <div className="agent-logs-header">
@@ -51,15 +33,28 @@ const AgentTrainingLogs: React.FC = () => {
           <span className="logs-grid-icon">⊞</span>
           <h3 className="section-title">Journaux de l'Agent</h3>
         </div>
-        <button className="eflacar-btn">
-          <Trash2 size={12} /> Eflacar
+        <button className="eflacar-btn" onClick={handleClear} disabled={isRunning}>
+          <Trash2 size={12} /> Effacer
         </button>
       </div>
 
-      <div className="logs-list" style={{ marginTop: 12 }}>
-        {LOGS.map((log, i) => (
+      <div className="logs-list" style={{ marginTop: 12, maxHeight: 400, overflowY: "auto" }}>
+        {displayLogs.length === 0 && !isRunning && (
+          <div className="log-entry" style={{ justifyContent: "center", color: "#9CA3AF", padding: "20px", textAlign: "center" }}>
+            En attente du démarrage de l'entraînement...
+          </div>
+        )}
+        
+        {displayLogs.length === 0 && isRunning && (
+          <div className="log-entry" style={{ justifyContent: "center", color: "#F97316", padding: "20px", textAlign: "center" }}>
+            <Cpu size={16} className="spin" style={{ marginRight: 8 }} />
+            Démarrage de l'entraînement...
+          </div>
+        )}
+        
+        {displayLogs.map((log, i) => (
           <div key={i} className="log-entry training-log">
-            <span className="log-icon">{IconMap[log.type]}</span>
+            <span className="log-icon">{IconMap[log.type] || <Cpu size={13} color="#F97316" />}</span>
             <span className="log-time">{log.time}</span>
             <div className="log-body">
               <span className="log-title-blue">{log.title}</span>
@@ -68,6 +63,27 @@ const AgentTrainingLogs: React.FC = () => {
           </div>
         ))}
       </div>
+      
+      <style>{`
+        .spin {
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .logs-list::-webkit-scrollbar {
+          width: 6px;
+        }
+        .logs-list::-webkit-scrollbar-track {
+          background: #F3F4F6;
+          border-radius: 10px;
+        }
+        .logs-list::-webkit-scrollbar-thumb {
+          background: #D1D5DB;
+          border-radius: 10px;
+        }
+      `}</style>
     </div>
   );
 };
