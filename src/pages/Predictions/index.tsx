@@ -10,11 +10,14 @@ import ExplanationsCard from "./components/ExplanationsCard";
 import AgentLogs from "./components/AgentLogs";
 import ActionButton from "./components/ActionButton";
 import { DataPreview, ModelOption } from "./types";
-import "./predictions.css";
 
 const Predictions: React.FC = () => {
   const [filePreview, setFilePreview] = useState<DataPreview | null>(null);
-  const [selectedModel, setSelectedModel] = useState<ModelOption>({ id: "lstm", name: "LSTM", description: "Séries temporelles" });
+  const [selectedModel, setSelectedModel] = useState<ModelOption>({ 
+    id: "lstm", 
+    name: "LSTM", 
+    description: "Séries temporelles" 
+  });
   const [predictionLaunched, setPredictionLaunched] = useState(false);
 
   return (
@@ -24,22 +27,22 @@ const Predictions: React.FC = () => {
       icon={Sparkles}
       notifCount={1}
     >
-      <main className="main-content">
-        <div className="content-grid">
+      <main className="flex-1">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6">
           {/* Left Column */}
-          <div className="left-col">
+          <div className="space-y-6">
             <FileUploadCard onFileLoaded={setFilePreview} />
             <ResultsCard />
           </div>
 
           {/* Right Column */}
-          <div className="right-col">
-            <div className="top-right-row">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <ModelSelector onModelChange={setSelectedModel} />
               <PredictionSettings />
             </div>
             <ActionButton onLaunch={() => setPredictionLaunched(true)} />
-            <div className="bottom-right-row">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <PredictionChart />
               <ExplanationsCard />
             </div>
