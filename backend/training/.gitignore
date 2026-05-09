@@ -22,3 +22,6 @@ __pycache__/
 
 # Dataset de démo
 demo_sensors.csv
+
+
+backend/training/envr/

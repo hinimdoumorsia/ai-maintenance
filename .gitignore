@@ -84,3 +84,7 @@ coverage.xml
 *.tmp
 *.swp
 "backend/training/envr/" 
+"backend/training/envr/" 
+"backend/training/envr/" 
+"envr/" 
+"backend/training/envr/" 
