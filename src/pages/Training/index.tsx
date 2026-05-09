@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, ChevronDown, Home, Database, LayoutGrid, TrendingUp, Wrench, Bot, Settings, AlertCircle, Play, Loader2, CheckCircle, Trash2, FileText } from "lucide-react";
+import { Bell, ChevronDown, Home, Database, LayoutGrid, TrendingUp, Wrench, Bot, Settings, AlertCircle, Play, Loader2, Trash2, FileText } from "lucide-react";
 import DatasetUpload from "./components/DatasetUpload";
 import TrainingProgress from "./components/TrainingProgress";
 import ModelSelection from "./components/ModelSelection";
@@ -48,6 +48,9 @@ const Training: React.FC = () => {
   
   const currentJobIdRef = useRef<string | null>(null);
   const closeSSERef = useRef<(() => void) | null>(null);
+  
+  // STOCKAGE POUR RECONSTRUIRE LES ARGUMENTS COUPÉS
+  const pendingArgumentsRef = useRef<{ title: string; detail: string; time: string } | null>(null);
 
   const updateStep = (stepId: string, status: "pending" | "in_progress" | "completed") => {
     setSteps(prev => {
@@ -82,6 +85,7 @@ const Training: React.FC = () => {
     setLogs([]);
     setError(null);
     setTrainingSuccess(false);
+    pendingArgumentsRef.current = null;
     if (closeSSERef.current) {
       closeSSERef.current();
       closeSSERef.current = null;
@@ -102,20 +106,74 @@ const Training: React.FC = () => {
   };
 
   const handleLog = (log: LogEntry) => {
-    const agentLog: AgentLogEntry = {
-      time: log.time,
-      title: log.title,
-      detail: log.detail,
-      type: log.type as any,
-    };
-    setLogs(prev => [...prev, agentLog]);
+    // RECONSTRUCTION DES ARGUMENTS COUPÉS
+    if (log.title && log.title.includes("Arguments")) {
+      const detail = log.detail || "";
+      
+      // Vérifie si l'argument est complet (se termine par } ou ])
+      const isComplete = detail.trim().endsWith('}') || detail.trim().endsWith(']') || detail.includes('"}');
+      
+      if (!isComplete) {
+        // Stocke le morceau coupé
+        if (pendingArgumentsRef.current) {
+          pendingArgumentsRef.current.detail += detail;
+        } else {
+          pendingArgumentsRef.current = {
+            title: log.title,
+            detail: detail,
+            time: log.time
+          };
+        }
+        return; // N'affiche pas encore
+      }
+      
+      // Si on a un stockage en attente, on combine
+      let finalDetail = detail;
+      if (pendingArgumentsRef.current) {
+        finalDetail = pendingArgumentsRef.current.detail + detail;
+        pendingArgumentsRef.current = null;
+      }
+      
+      const agentLog: AgentLogEntry = {
+        time: log.time,
+        title: log.title,
+        detail: finalDetail,
+        type: log.type as any,
+      };
+      setLogs(prev => [...prev, agentLog]);
+    } 
+    else {
+      // Pour les autres logs, affiche normalement
+      // Si on avait des arguments stockés mais qu'on reçoit autre chose, on vide
+      if (pendingArgumentsRef.current) {
+        // Affiche ce qui était stocké avant de continuer
+        const pendingLog: AgentLogEntry = {
+          time: pendingArgumentsRef.current.time,
+          title: pendingArgumentsRef.current.title,
+          detail: pendingArgumentsRef.current.detail,
+          type: "preprocess" as any,
+        };
+        setLogs(prev => [...prev, pendingLog]);
+        pendingArgumentsRef.current = null;
+      }
+      
+      const agentLog: AgentLogEntry = {
+        time: log.time,
+        title: log.title,
+        detail: log.detail,
+        type: log.type as any,
+      };
+      setLogs(prev => [...prev, agentLog]);
+    }
     
+    // GESTION DES ÉTAPES
     const titleLower = log.title.toLowerCase();
+    const detailStr = log.detail || "";
     
-    if (titleLower.includes("pipeline démarré") || titleLower.includes("lecture")) {
+    if (titleLower.includes("pipeline démarré")) {
       updateStep("analyse", "in_progress");
     }
-    else if (titleLower.includes("exécution : train_model") || titleLower.includes("début")) {
+    else if (titleLower.includes("exécution : train_model")) {
       updateStep("analyse", "completed");
       updateStep("training", "in_progress");
     }
@@ -123,10 +181,11 @@ const Training: React.FC = () => {
       updateStep("training", "completed");
       updateStep("evaluation", "in_progress");
       
-      const match = log.detail.match(/baseline=([\d.]+)\s*\|\s*cleaned=([\d.]+)/);
+      const match = detailStr.match(/baseline=([\d.]+)/);
       if (match) {
         const baselineScore = parseFloat(match[1]);
-        const cleanedScore = parseFloat(match[2]);
+        const cleanedMatch = detailStr.match(/cleaned=([\d.]+)/);
+        const cleanedScore = cleanedMatch ? parseFloat(cleanedMatch[1]) : baselineScore;
         setResults({
           comparison: {
             baseline_score: baselineScore,
@@ -167,6 +226,7 @@ const Training: React.FC = () => {
     setLogs([]);
     setResults(null);
     setTrainingSuccess(false);
+    pendingArgumentsRef.current = null;
     resetProgress();
 
     try {
@@ -232,8 +292,6 @@ const Training: React.FC = () => {
   .bar-bg { background: #E5E7EB; height: 30px; border-radius: 8px; overflow: hidden; }
   .bar-fill { height: 100%; background: linear-gradient(90deg, #F97316, #FBBF24); border-radius: 8px; display: flex; align-items: center; justify-content: flex-end; padding-right: 10px; color: white; font-weight: bold; }
   .agent-box { background: #EFF6FF; border-left: 4px solid #3B82F6; border-radius: 12px; padding: 20px; margin: 20px 0; }
-  .false-positive-box { background: #FEF2F2; border-left: 4px solid #EF4444; border-radius: 12px; padding: 20px; margin: 20px 0; }
-  .tips-box { background: #F0FDF4; border-left: 4px solid #22C55E; border-radius: 12px; padding: 20px; margin: 20px 0; }
   table { width: 100%; border-collapse: collapse; margin: 20px 0; }
   th, td { border: 1px solid #E5E7EB; padding: 10px; text-align: left; }
   th { background: #F97316; color: white; }
@@ -260,20 +318,11 @@ const Training: React.FC = () => {
       <div class="bar"><div class="bar-label"><span>Baseline</span><span>${(baselineScore * 100).toFixed(1)}%</span></div><div class="bar-bg"><div class="bar-fill" style="width: ${baselineScore * 100}%"></div></div></div>
       <div class="bar"><div class="bar-label"><span>Modèle nettoyé</span><span>${(cleanedScore * 100).toFixed(1)}%</span></div><div class="bar-bg"><div class="bar-fill" style="width: ${cleanedScore * 100}%; background: linear-gradient(90deg, #EA580C, #F97316)"></div></div></div>
     </div>
-    <h2>Remarques de l'agent</h2>
-    <div class="agent-box">
-      <ul style="margin-left: 20px;">
-        <li>Analyse automatique des données terminée avec succès</li>
-        <li>Le modèle CatBoost a été utilisé pour l'entraînement</li>
-        <li>Colonne cible: ${targetCol}</li>
-        <li>Les performances baseline et cleaned sont identiques: ${(baselineScore * 100).toFixed(1)}%</li>
-      </ul>
-    </div>
     <h2>Logs d'exécution</h2>
     <table>
-      <thead><tr><th>Heure</th><th>Action</th><td></thead>
+      <thead><tr><th>Heure</th><th>Action</th></tr></thead>
       <tbody>
-        ${logs.slice(-15).map(l => `<tr><td style="white-space: nowrap;">${l.time || '--:--:--'}</td><td><strong>${l.title || ''}</strong> ${l.detail || ''}</td></tr>`).join('')}
+        ${logs.map(l => `<tr><td>${l.time || '--:--:--'}</td><td><strong>${l.title || ''}</strong> ${l.detail || ''}</td></tr>`).join('')}
       </tbody>
     </table>
   </div>
@@ -303,7 +352,7 @@ const Training: React.FC = () => {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-icon">AI</div>
-          <span className="brand-name">AI MAINTENANCE</span>
+          <span className="brand-name">MAINTENANCE</span>
         </div>
         <nav className="sidebar-nav">
           {NAV_ITEMS.map((item) => (
@@ -348,7 +397,6 @@ const Training: React.FC = () => {
         {error && <div className="error-banner"><AlertCircle size={16} />{error}</div>}
 
         <div className="training-content-grid">
-          {/* COLONNE DE GAUCHE */}
           <div className="training-left-col">
             <DatasetUpload onLoaded={setDataset} onFileSelected={handleFileSelected} uploadedFileName={selectedFile?.name} />
             <TrainingProgress steps={steps} percent={percent} running={running} />
@@ -360,7 +408,6 @@ const Training: React.FC = () => {
             <AgentTrainingLogs logs={logs} onClear={() => setLogs([])} isRunning={running} />
           </div>
 
-          {/* COLONNE DE DROITE */}
           <div className="training-right-col">
             <div className="training-top-row">
               <ModelSelection selected={selectedModel} onSelect={setSelectedModel} mode={mode} onModeChange={setMode} />

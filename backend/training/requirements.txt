@@ -3,6 +3,7 @@ numpy
 scikit-learn
 scipy
 xgboost
+catboost
 mlflow
 groq
 fastapi

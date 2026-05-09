@@ -2,17 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
-/* On ajoute un fond léger pour tout le projet comme sur tes maquettes */
-body {
-  margin: 0;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background-color: #F1F4F9; /* Le gris bleuté de tes images */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  
+  body {
+    margin: 0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: #F1F4F9;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  #root {
+    min-height: 100vh;
+    display: flex;
+  }
 }
 
-/* On s'assure que le container React prend toute la place */
-#root {
-  min-height: 100vh;
-  display: flex;
+@layer utilities {
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  .animate-fadeIn {
+    animation: fadeIn 0.3s ease;
+  }
+}
+
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* TEST VISUEL - À SUPPRIMER APRÈS */
+.bg-test {
+  background-color: red !important;
+  color: white !important;
+  padding: 20px !important;
 }

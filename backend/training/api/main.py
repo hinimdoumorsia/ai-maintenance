@@ -17,6 +17,8 @@ import shutil
 import uuid
 from pathlib import Path
 from typing import AsyncGenerator
+from dotenv import load_dotenv
+load_dotenv()
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
