@@ -1,12 +1,7 @@
-<<<<<<< HEAD
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, ChevronDown, Home, Database, LayoutGrid, TrendingUp, Wrench, Bot, Settings, AlertCircle, Play, Loader2, Trash2, FileText } from "lucide-react";
-=======
-import React, { useState } from "react";
+import { Bell, ChevronDown, Home, Database, LayoutGrid, TrendingUp, Wrench, Bot, Settings, AlertCircle, Play, Loader2, Trash2, FileText, GraduationCap } from "lucide-react";
 import AppLayout from "../../components/AppLayout";
-import { GraduationCap } from "lucide-react";
->>>>>>> djeriV2
 import DatasetUpload from "./components/DatasetUpload";
 import TrainingProgress from "./components/TrainingProgress";
 import ModelSelection from "./components/ModelSelection";
@@ -17,7 +12,6 @@ import { TrainingDataset, ModelId, SelectionMode, AgentOptions, TrainingStep, Ag
 import { uploadAndTrain, streamLogs, getResults, LogEntry } from "../../services/api";
 import "./training.css";
 
-<<<<<<< HEAD
 const NAV_ITEMS = [
   { icon: Home, label: "Tableau de bord", path: "/" },
   { icon: Database, label: "Données", path: "/donnees" },
@@ -27,9 +21,6 @@ const NAV_ITEMS = [
   { icon: Wrench, label: "Outils", path: "/outils" },
   { icon: Bot, label: "Agents", path: "/agents" },
 ];
-=======
-const NAV_ITEMS_UNUSED: never[] = []; // removed — sidebar now shared via AppLayout
->>>>>>> djeriV2
 
 const INITIAL_STEPS: TrainingStep[] = [
   { id: "upload", label: "Upload du dataset", status: "pending" },
@@ -40,6 +31,7 @@ const INITIAL_STEPS: TrainingStep[] = [
 ];
 
 const Training: React.FC = () => {
+  const navigate = useNavigate();
   const [dataset, setDataset] = useState<TrainingDataset | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedModel, setSelectedModel] = useState<ModelId>("catboost");
@@ -356,7 +348,6 @@ const Training: React.FC = () => {
   }, []);
 
   return (
-<<<<<<< HEAD
     <div className="training-layout">
       <aside className="sidebar">
         <div className="sidebar-brand">
@@ -405,15 +396,6 @@ const Training: React.FC = () => {
 
         {error && <div className="error-banner"><AlertCircle size={16} />{error}</div>}
 
-=======
-    <AppLayout
-      title="Entrainement"
-      subtitle="Entraînez des modèles de machine learning pour la maintenance prédictive"
-      icon={GraduationCap}
-    >
-      <main className="main-content">
-        {/* Content grid */}
->>>>>>> djeriV2
         <div className="training-content-grid">
           <div className="training-left-col">
             <DatasetUpload onLoaded={setDataset} onFileSelected={handleFileSelected} uploadedFileName={selectedFile?.name} />
@@ -442,7 +424,7 @@ const Training: React.FC = () => {
           </div>
         </div>
       </main>
-    </AppLayout>
+    </div>
   );
 };
 
