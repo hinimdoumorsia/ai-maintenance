@@ -299,11 +299,7 @@ Le projet est en phase de finalisation. Toutes les pages Données (8 sous-pages)
 ## Contributeurs
 
 - **HINIMDOU MORSIA GUITDAM** — Élève ingénieur IA & Technologie des Données
-- **Nankouli Marc Thierry** — Élève ingénieur IA & Technologie des Données
-<<<<<<< HEAD
-- **Djeri Alassani Oubenoupou** — Élève ingénieur IA & Technologie des Données
-=======
+- **NANKOULI MARC THIERRY** — Élève ingénieur IA & Technologie des Données
 - **DJERI-ALASSANI OUBENOUPOU** — Élève ingénieur IA & Technologie des Données
->>>>>>> djeriV2
 
 **Encadrant : Professeur Zaki**
