@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, ChevronDown, Home, Database, LayoutGrid, TrendingUp, Wrench, Bot, Settings, AlertCircle, Play, Loader2, Trash2, FileText, GraduationCap } from "lucide-react";
-import AppLayout from "../../components/AppLayout";
+import { Bell, ChevronDown, Home, Database, LayoutGrid, TrendingUp, Wrench, Bot, Settings, AlertCircle, Play, Loader2, FileText } from "lucide-react";
 import DatasetUpload from "./components/DatasetUpload";
 import TrainingProgress from "./components/TrainingProgress";
 import ModelSelection from "./components/ModelSelection";
@@ -10,7 +9,6 @@ import ResultsCard from "./components/ResultsCard";
 import AgentTrainingLogs from "./components/AgentTrainingLogs";
 import { TrainingDataset, ModelId, SelectionMode, AgentOptions, TrainingStep, AgentLogEntry } from "./types";
 import { uploadAndTrain, streamLogs, getResults, LogEntry } from "../../services/api";
-import "./training.css";
 
 const NAV_ITEMS = [
   { icon: Home, label: "Tableau de bord", path: "/" },
@@ -49,7 +47,6 @@ const Training: React.FC = () => {
   const currentJobIdRef = useRef<string | null>(null);
   const closeSSERef = useRef<(() => void) | null>(null);
   
-  // STOCKAGE POUR RECONSTRUIRE LES ARGUMENTS COUPÉS
   const pendingArgumentsRef = useRef<{ title: string; detail: string; time: string } | null>(null);
 
   const updateStep = (stepId: string, status: "pending" | "in_progress" | "completed") => {
@@ -106,15 +103,11 @@ const Training: React.FC = () => {
   };
 
   const handleLog = (log: LogEntry) => {
-    // RECONSTRUCTION DES ARGUMENTS COUPÉS
     if (log.title && log.title.includes("Arguments")) {
       const detail = log.detail || "";
-      
-      // Vérifie si l'argument est complet (se termine par } ou ])
       const isComplete = detail.trim().endsWith('}') || detail.trim().endsWith(']') || detail.includes('"}');
       
       if (!isComplete) {
-        // Stocke le morceau coupé
         if (pendingArgumentsRef.current) {
           pendingArgumentsRef.current.detail += detail;
         } else {
@@ -124,10 +117,9 @@ const Training: React.FC = () => {
             time: log.time
           };
         }
-        return; // N'affiche pas encore
+        return;
       }
       
-      // Si on a un stockage en attente, on combine
       let finalDetail = detail;
       if (pendingArgumentsRef.current) {
         finalDetail = pendingArgumentsRef.current.detail + detail;
@@ -143,10 +135,7 @@ const Training: React.FC = () => {
       setLogs(prev => [...prev, agentLog]);
     } 
     else {
-      // Pour les autres logs, affiche normalement
-      // Si on avait des arguments stockés mais qu'on reçoit autre chose, on vide
       if (pendingArgumentsRef.current) {
-        // Affiche ce qui était stocké avant de continuer
         const pendingLog: AgentLogEntry = {
           time: pendingArgumentsRef.current.time,
           title: pendingArgumentsRef.current.title,
@@ -166,7 +155,6 @@ const Training: React.FC = () => {
       setLogs(prev => [...prev, agentLog]);
     }
     
-    // GESTION DES ÉTAPES
     const titleLower = log.title.toLowerCase();
     const detailStr = log.detail || "";
     
@@ -348,78 +336,114 @@ const Training: React.FC = () => {
   }, []);
 
   return (
-    <div className="training-layout">
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <div className="brand-icon">AI</div>
-          <span className="brand-name">MAINTENANCE</span>
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Sidebar */}
+      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full">
+        <div className="flex items-center gap-2 p-5 border-b border-gray-100">
+          <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center text-white font-bold">AI</div>
+          <span className="font-bold text-gray-900">MAINTENANCE</span>
         </div>
-        <nav className="sidebar-nav">
+        <nav className="flex-1 p-3 space-y-1">
           {NAV_ITEMS.map((item) => (
-            <button key={item.label} className={`nav-item ${item.active ? "active" : ""}`} onClick={() => item.path && navigate(item.path)}>
-              <item.icon size={17} className="nav-icon-svg" />
-              <span className="nav-label">{item.label}</span>
+            <button
+              key={item.label}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                item.active ? "bg-orange-50 text-orange-600" : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+              }`}
+              onClick={() => item.path && navigate(item.path)}
+            >
+              <item.icon size={18} />
+              <span>{item.label}</span>
             </button>
           ))}
         </nav>
-        <div className="sidebar-bottom">
-          <button className="nav-item" onClick={() => navigate("/parametres")}>
-            <Settings size={17} className="nav-icon-svg" />
-            <span className="nav-label">Paramètres</span>
+        <div className="p-4 border-t border-gray-200">
+          <button
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+            onClick={() => navigate("/parametres")}
+          >
+            <Settings size={18} />
+            <span>Paramètres</span>
           </button>
-          <div className="help-card">
-            <p className="help-title">Besoin d'aide?</p>
-            <a href="#" className="help-link">Voir la documentation →</a>
-          </div>
         </div>
       </aside>
 
-      <main className="main-content">
-        <header className="prediction-header">
-          <div className="header-left">
-            <div className="header-icon-wrap">
-              <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                <rect x="2" y="2" width="24" height="24" rx="6" fill="#F97316" />
-                <path d="M8 14h12M14 8v12" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+      {/* Main Content */}
+      <main className="flex-1 ml-64">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <rect x="2" y="2" width="20" height="20" rx="5" fill="#F97316" />
+                <path d="M7 12h10M12 7v10" stroke="white" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </div>
             <div>
-              <h1 className="header-title">Entrainement</h1>
-              <p className="header-subtitle">Entraînez des modèles de machine learning pour la maintenance prédictive</p>
+              <h1 className="text-xl font-bold text-gray-900">Entrainement</h1>
+              <p className="text-xs text-gray-500">Entraînez des modèles de machine learning pour la maintenance prédictive</p>
             </div>
           </div>
-          <div className="header-right">
-            <div className="notif-bell"><Bell size={20} /><span className="notif-badge">1</span></div>
-            <div className="user-chip"><div className="user-avatar">A</div><span>Admin</span><ChevronDown size={16} /></div>
+          <div className="flex items-center gap-3">
+            <button className="relative p-2 text-gray-400 hover:text-gray-600">
+              <Bell size={18} />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-orange-500 rounded-full"></span>
+            </button>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg">
+              <div className="w-6 h-6 bg-gray-400 rounded-full flex items-center justify-center text-white text-xs">A</div>
+              <span className="text-sm text-gray-700">Admin</span>
+              <ChevronDown size={14} className="text-gray-500" />
+            </div>
           </div>
         </header>
 
-        {error && <div className="error-banner"><AlertCircle size={16} />{error}</div>}
-
-        <div className="training-content-grid">
-          <div className="training-left-col">
-            <DatasetUpload onLoaded={setDataset} onFileSelected={handleFileSelected} uploadedFileName={selectedFile?.name} />
-            <TrainingProgress steps={steps} percent={percent} running={running} />
-            
-            <button className="btn-start-training-main" onClick={handleStart} disabled={running}>
-              {running ? <><Loader2 size={22} className="spin" /> Entraînement en cours...</> : <><Play size={22} fill="white" /> Démarrer l'entraînement</>}
-            </button>
-            
-            <AgentTrainingLogs logs={logs} onClear={() => setLogs([])} isRunning={running} />
-          </div>
-
-          <div className="training-right-col">
-            <div className="training-top-row">
-              <ModelSelection selected={selectedModel} onSelect={setSelectedModel} mode={mode} onModeChange={setMode} />
-              <AgentOptionsCard options={agentOptions} onChange={setAgentOptions} targetCol={targetCol} onTargetColChange={setTargetCol} availableColumns={[]} />
+        {/* Content */}
+        <div className="p-6">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+              <AlertCircle size={16} />
+              {error}
             </div>
-            
-            <div className="training-bottom-row">
-              <button className="btn-download-report-main" onClick={generateReport}>
-                <FileText size={22} />
-                Télécharger document
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column */}
+            <div className="space-y-4">
+              <DatasetUpload onLoaded={setDataset} onFileSelected={handleFileSelected} uploadedFileName={selectedFile?.name} />
+              <TrainingProgress steps={steps} percent={percent} running={running} />
+              
+              <button
+                className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleStart}
+                disabled={running}
+              >
+                {running ? (
+                  <><Loader2 size={20} className="animate-spin" /> Entraînement en cours...</>
+                ) : (
+                  <><Play size={20} fill="white" /> Démarrer l'entraînement</>
+                )}
               </button>
-              <ResultsCard results={results} logs={logs} />
+              
+              <AgentTrainingLogs logs={logs} onClear={() => setLogs([])} isRunning={running} />
+            </div>
+
+            {/* Right Column */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <ModelSelection selected={selectedModel} onSelect={setSelectedModel} mode={mode} onModeChange={setMode} />
+                <AgentOptionsCard options={agentOptions} onChange={setAgentOptions} targetCol={targetCol} onTargetColChange={setTargetCol} availableColumns={[]} />
+              </div>
+              
+              <div className="grid grid-cols-1 gap-4">
+                <button
+                  className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
+                  onClick={generateReport}
+                >
+                  <FileText size={20} />
+                  Télécharger document
+                </button>
+                <ResultsCard results={results} logs={logs} />
+              </div>
             </div>
           </div>
         </div>
