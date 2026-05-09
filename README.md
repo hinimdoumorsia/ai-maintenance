@@ -2,7 +2,6 @@
 
 ## Présentation du projet
 
-<<<<<<< HEAD
 Application web de maintenance prédictive pour la surveillance vibratoire des machines tournantes. L'application combine un **agent EDA intelligent** (analyse exploratoire, prétraitement automatique, narration IA via Claude), un **dashboard temps réel** (9 piliers KPI, machines à risque, alertes), et **8 sous-pages d'analyse spécialisée** (vibratoire ISO 10816/20816, pronostic DRBF, KPIs, parc machines, capteurs IoT, classification VIS).
 
 Le système supporte **deux modes** : données temps réel depuis la base SQLite (seed automatique) **ou** analyse de datasets uploadés (CSV, XLSX, TXT, ARFF, ZIP — NASA C-MAPSS, Weka, tabulaires).
@@ -13,7 +12,7 @@ Le système supporte **deux modes** : données temps réel depuis la base SQLite
 
 ## Lancement rapide
 
-=======
+
 Application web de maintenance prédictive pour la surveillance vibratoire des machines tournantes. L'application combine un **agent EDA intelligent** (analyse exploratoire, prétraitement automatique, **score qualité 0-100**, détection outliers IQR, scaler adaptatif, boxplots, narration IA via Claude avec références ISO), un **dashboard temps réel** (9 piliers KPI, machines à risque, alertes), et **8 sous-pages d'analyse spécialisée** (vibratoire ISO 10816/20816 avec calculateur fréquences roulements, pronostic DRBF, KPIs, parc machines, capteurs IoT, classification VIS).
 
 Le système supporte **deux modes** : données temps réel depuis la base SQLite (seed automatique) **ou** analyse de datasets uploadés (CSV, XLSX, TXT, ARFF, ZIP — NASA C-MAPSS, Weka, tabulaires).
@@ -26,7 +25,6 @@ L'agent EDA est **transparent** : chaque étape du pipeline est tracée et visib
 
 ## Lancement rapide
 
->>>>>>> djeriV2
 ```bash
 # 1. Backend
 cd backend_data
@@ -41,9 +39,6 @@ npm run dev
 Accès : **http://localhost:5173**
 
 ---
-
-<<<<<<< HEAD
-=======
 ## Chatbot RAG local (Docs PDF)
 
 ```bash
@@ -288,11 +283,8 @@ Le dashboard s'alimente automatiquement :
 
 ## Statut
 
-<<<<<<< HEAD
-Le projet est en phase de finalisation. Toutes les pages Données (8 sous-pages), le Dashboard (9 piliers), et l'agent EDA (10 étapes) sont fonctionnels. Les pages Predictions, Training, Models, Agents, Outils, Maintenance et Paramètres sont en cours.
-=======
 Le projet est en phase de finalisation. Toutes les pages Données (8 sous-pages), le Dashboard (9 piliers), et l'agent EDA (14 étapes : pipeline adaptatif + score qualité + boxplots + prompting ISO expert) sont fonctionnels. Les pages Predictions, Training, Models, Agents, Outils, Maintenance et Paramètres sont en cours.
->>>>>>> djeriV2
+
 
 ---
 
