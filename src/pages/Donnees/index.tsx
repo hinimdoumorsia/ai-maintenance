@@ -1,206 +1,158 @@
 // src/pages/Donnees/index.tsx
 // Page principale — Données & Prédiction (AI Maintenance)
 
-import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  Home, 
-  Database, 
-  GraduationCap, 
-  Package, 
-  Sparkles, 
-  Wrench, 
-  Bot, 
-  Settings,
-  Bell,
-  ChevronDown,
-  User,
-  HelpCircle
-} from 'lucide-react';
+import React, { useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Database, BarChart2, Clock, TrendingUp, Cpu, Wifi, Star, Upload, BookOpen, Library } from 'lucide-react';
+import { useDatasets } from '../../contexts/DatasetContext';
+import AppLayout from '../../components/AppLayout';
 import './donnees.css';
 
-import { PredictionCard } from './components/PredictionCard';
-import { VisualisationCard } from './components/VisualisationCard';
-import { KPICard } from './components/KPICard';
+import ChargementPage from './components/ChargementPage';
+import VueGenerale from './components/VueGenerale';
+import PronosticPage from './components/PronosticPage';
+import KPIsPage from './components/KPIsPage';
+import DonneesParc from './components/DonneesParc';
+import CapteurIoT from './components/CapteurIoT';
+import ClassificationVIS from './components/ClassificationVIS';
+import AnalyseVibratoire from './components/AnalyseVibratoire';
+import DocumentationPage from './components/DocumentationPage';
+import DocsTechniques from './components/DocsTechniques';
 
-import {
-  DonneesPageState,
-  PredictionManuelle,
-} from './types';
 
-/* ─── Données initiales ──────────────────────────────────── */
-const defaultState: DonneesPageState = {
-  predictionFile: null,
-  predictionManuelle: {
-    temperature: '',
-    vibration: '',
-    pressure: '',
-    status: 'OK',
-    runtime: '',
-  },
-  apercu: {
-    total_observations: 300,
-    total_features: 15,
-    values_missings: 13,
-    features: 4,
-    valuers_desentations: 0,
-  },
-  observations: [
-    { timestamp: '2024-01-15 10:00:00', machine_id: 'MCH-001', temperature: 75.4, vibration: 0.023, status: 'OK' },
-    { timestamp: '2024-01-15 10:01:00', machine_id: 'MCH-001', temperature: 76.1, vibration: 0.025, status: 'OK' },
-    { timestamp: '2024-01-15 10:02:00', machine_id: 'MCH-002', temperature: 88.9, vibration: 0.018, status: 'OK' },
-  ],
-  kpiFiabilite: {
-    taux_disponibilite: 95,
-    taux_disponibilite_cible: 94,
-    cible_atteinte: true,
-  },
-  kpiCouts: {
-    reduction_pourcentage: '-20-30%',
-    cible_atteinte: true,
-  },
-  kpiProductivite: {
-    temps_arret_non_planifie: '-35-50%',
-    oee: 150,
-    oee_progress: 85,
-    cible_oee_atteinte: false,
-  },
-  kpiModele: {
-    precision: 85,
-    precision_target: 85,
-    faux_positifs_pct: 0,
-    faux_positifs_cible: 10,
-    lead_time_h: 72,
-    lead_time_progress: 72,
-  },
-};
+/* ─── Options d'analyse ─────────────────────────────────── */
+type AnalyseId =
+  | 'default'
+  | 'chargement'
+  | 'vibratoire'
+  | 'pronostic'
+  | 'kpis'
+  | 'machines'
+  | 'capteurs'
+  | 'vis'
+  | 'documentation'
+  | 'docs-tech';
 
-/* ─── Sidebar nav items ──────────────────────────────────── */
-const NAV_ITEMS = [
-  { label: 'Tableau de bord', icon: Home, path: '/' },
-  { label: 'Données',         icon: Database,  path: '/donnees', active: true },
-  { label: 'Entraînement',    icon: GraduationCap, path: '/entrainement' },
-  { label: 'Modèles',         icon: Package, path: '/models' },  // ← Changé de '/modeles' à '/models'
-  { label: 'Prédictions',     icon: Sparkles, path: '/predictions' },
-  { label: 'Outils',          icon: Wrench, path: '/outils' },
-  { label: 'Agents',          icon: Bot, path: '/agents' },
+const NAV_GROUPS: {
+  label: string;
+  items: { id: AnalyseId; label: string; icon: React.ElementType; badgeKey?: string }[];
+}[] = [
+  {
+    label: 'Données',
+    items: [
+      { id: 'chargement', label: 'Chargement',    icon: Upload },
+      { id: 'default',    label: 'Vue générale',  icon: Database },
+    ],
+  },
+  {
+    label: 'Analyses disponibles',
+    items: [
+      { id: 'vibratoire', label: 'Analyse vibratoire', icon: BarChart2, badgeKey: 'vibration' },
+      { id: 'pronostic',  label: 'Pronostic & DRBF',   icon: Clock },
+      { id: 'kpis',       label: 'KPIs & Performance',  icon: TrendingUp },
+    ],
+  },
+  {
+    label: 'Actifs',
+    items: [
+      { id: 'machines', label: 'Parc machines',      icon: Cpu,  badgeKey: 'zoneD' },
+      { id: 'capteurs', label: 'Capteurs IoT',       icon: Wifi },
+      { id: 'vis',      label: 'Classification VIS', icon: Star },
+    ],
+  },
+  {
+    label: 'Aide',
+    items: [
+      { id: 'documentation', label: 'Documentation',      icon: BookOpen },
+      { id: 'docs-tech',     label: 'Docs techniques PDF', icon: Library },
+    ],
+  },
 ];
 
 /* ─── DonneesPage ────────────────────────────────────────── */
 const DonneesPage: React.FC = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [state, setState] = useState<DonneesPageState>(defaultState);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { datasets } = useDatasets();
 
-  /* handlers */
-  const handleManuellChange = (field: keyof PredictionManuelle, value: string) => {
-    setState(s => ({
-      ...s,
-      predictionManuelle: { ...s.predictionManuelle, [field]: value },
-    }));
-  };
+  /* Tab routing via URL (?tab=vibratoire) */
+  const VALID_IDS: AnalyseId[] = ['default', 'chargement', 'vibratoire', 'pronostic', 'kpis', 'machines', 'capteurs', 'vis', 'documentation', 'docs-tech'];
+  const rawTab = searchParams.get('tab') as AnalyseId | null;
+  const analyse: AnalyseId = rawTab && VALID_IDS.includes(rawTab) ? rawTab : 'default';
+  const setAnalyse = (id: AnalyseId) => setSearchParams({ tab: id }, { replace: false });
 
-  const handleFileSelect = (file: File) => {
-    setState(s => ({ ...s, predictionFile: file }));
-  };
+  /* Badge counts — live from context */
+  const badges = useMemo(() => ({
+    vibration: datasets.filter(d => d.detected_type === 'vibration' && d.status === 'processed').length,
+    zoneD: 0,  // populated by ClassificationVIS / VIS data if needed
+  }), [datasets]);
 
-  const handlePredictManuelle = () => {
-    // TODO: appel API prédiction manuelle
-    console.log('Lancement prédiction manuelle', state.predictionManuelle);
-  };
+  const activeOption = NAV_GROUPS.flatMap(g => g.items).find(o => o.id === analyse);
 
   return (
-    <div className="donnees-layout">
+    <AppLayout
+      title="Données & Prédiction"
+      subtitle="Gérer les données, les prédictions et les KPI"
+      icon={Database}
+    >
+      <div className="donnees-main">
 
-      {/* ── Sidebar ── */}
-      <aside className="sidebar">
-        <div className="sidebar-logo">
-          <div className="sidebar-logo-icon">🤖</div>
-          <div className="sidebar-logo-text">
-            AI MAINTENANCE
-            <span>Système intelligent</span>
-          </div>
-        </div>
-
-        <nav className="sidebar-nav">
-          {NAV_ITEMS.map(item => (
-            <button
-              key={item.path}
-              className={`nav-item ${location.pathname === item.path ? 'active' : ''}`}
-              onClick={() => navigate(item.path)}
-            >
-              <item.icon size={17} className="nav-icon-svg" />
-              <span className="nav-label">{item.label}</span>
-            </button>
+        {/* ── Navbar horizontale ── */}
+        <nav className="donnees-navbar">
+          {NAV_GROUPS.map((group, gi) => (
+            <div className="donnees-navbar-group" key={gi}>
+              <span className="donnees-navbar-group-label">{group.label}</span>
+              <div className="donnees-navbar-items">
+                {group.items.map(item => {
+                  const Icon = item.icon;
+                  const isActive = analyse === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setAnalyse(item.id)}
+                      className={`donnees-nav-btn${isActive ? ' active' : ''}`}
+                    >
+                      <Icon size={14} />
+                      {item.label}
+                      {item.badgeKey && badges[item.badgeKey as keyof typeof badges] > 0 && (
+                        <span className={`donnees-nav-badge${isActive ? ' active' : ''}`}>
+                          {badges[item.badgeKey as keyof typeof badges]}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           ))}
         </nav>
 
-        <div className="sidebar-footer">
-          <button
-            className={`nav-item ${location.pathname === '/parametres' ? 'active' : ''}`}
-            onClick={() => navigate('/parametres')}
-          >
-            <Settings size={17} className="nav-icon-svg" />
-            <span className="nav-label">Paramètres</span>
-          </button>
-
-          <div className="sidebar-help">
-            <h4>Besoin d'aide?</h4>
-            <p>Voir la documentation</p>
-            <a href="#">› Voir la documentation</a>
+          {/* ── Zone principale ── */}
+          <div className="donnees-analyse-content">
+            {analyse === 'chargement' ? (
+              <ChargementPage />
+            ) : analyse === 'default' ? (
+              <VueGenerale />
+            ) : analyse === 'pronostic' ? (
+              <PronosticPage />
+            ) : analyse === 'kpis' ? (
+              <KPIsPage />
+            ) : analyse === 'machines' ? (
+              <DonneesParc />
+            ) : analyse === 'capteurs' ? (
+              <CapteurIoT />
+            ) : analyse === 'vis' ? (
+              <ClassificationVIS />
+            ) : analyse === 'vibratoire' ? (
+              <AnalyseVibratoire />
+            ) : analyse === 'documentation' ? (
+              <DocumentationPage />
+            ) : analyse === 'docs-tech' ? (
+              <DocsTechniques />
+            ) : null}
           </div>
-        </div>
-      </aside>
 
-      {/* ── Main ── */}
-      <div className="donnees-main">
-
-        {/* Topbar */}
-        <header className="topbar">
-          <div className="topbar-title">
-            <h1>Données &amp; Prédiction</h1>
-            <p>Gérer les données, les prédictions et les KPI</p>
-          </div>
-          <div className="topbar-right">
-            <button className="topbar-notif">
-              <Bell size={18} />
-              <span className="badge">1</span>
-            </button>
-            <button className="topbar-user">
-              <div className="topbar-user-avatar">A</div>
-              Admin <ChevronDown size={14} />
-            </button>
-          </div>
-        </header>
-
-        {/* Content */}
-        <div className="donnees-content">
-
-          {/* Col gauche : Prédiction */}
-          <PredictionCard
-            manuelle={state.predictionManuelle}
-            onManuellChange={handleManuellChange}
-            onFileSelect={handleFileSelect}
-            onPredictManuelle={handlePredictManuelle}
-          />
-
-          {/* Col droite haut : Visualisation */}
-          <VisualisationCard
-            apercu={state.apercu}
-            observations={state.observations}
-          />
-
-          {/* Col droite bas : KPI */}
-          <KPICard
-            fiabilite={state.kpiFiabilite}
-            couts={state.kpiCouts}
-            productivite={state.kpiProductivite}
-            modele={state.kpiModele}
-          />
-
-        </div>
       </div>
-    </div>
+    </AppLayout>
   );
 };
 

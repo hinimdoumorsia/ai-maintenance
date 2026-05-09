@@ -1,0 +1,678 @@
+/* ═══════════════════════════════════════════════════════════════
+   AI MAINTENANCE — AGENTS PAGE  ·  agents.css
+   Version corrigée qui préserve la structure existante
+═══════════════════════════════════════════════════════════════ */
+
+/* ── 1. DESIGN TOKENS ─────────────────────────────────────────── */
+.agents-page {
+  --color-bg: #f4f6fb;
+  --color-sidebar-bg: #ffffff;
+  --color-card: #ffffff;
+  --color-border: #e8eaf0;
+  --color-border-light: #f0f2f7;
+  --color-primary: #ff6b00;
+  --color-primary-10: rgba(255, 107, 0, 0.10);
+  --color-text: #1a1d2e;
+  --color-text-muted: #6b7280;
+  --color-online: #10b981;
+  --color-online-bg: rgba(16, 185, 129, 0.12);
+  --color-busy: #f59e0b;
+  --color-busy-bg: rgba(245, 158, 11, 0.12);
+  --color-offline: #ef4444;
+  --color-offline-bg: rgba(239, 68, 68, 0.12);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-full: 9999px;
+  --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.04);
+  --shadow-hover: 0 4px 20px rgba(0, 0, 0, 0.10);
+  --sidebar-w: 210px;
+  --topbar-h: 64px;
+  --transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Pas de reset global - on ne touche pas aux autres pages */
+
+/* ── 2. LAYOUT AGENTS PAGE SEULEMENT ────────────────────── */
+.agents-page {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+/* ── 3. SIDEBAR ───────────────────────────────────────────────── */
+.agents-page .sidebar {
+  width: var(--sidebar-w);
+  height: 100vh;
+  background: var(--color-sidebar-bg);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.agents-page .sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.agents-page .sidebar-logo-icon {
+  width: 36px;
+  height: 36px;
+  background: var(--color-primary-10);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.agents-page .sidebar-logo-text {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--color-text);
+}
+
+.agents-page .sidebar-nav {
+  flex: 1;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agents-page .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition);
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+}
+
+.agents-page .nav-item:hover {
+  background: var(--color-border-light);
+  color: var(--color-text);
+}
+
+.agents-page .nav-item.active {
+  background: rgba(255, 107, 0, 0.10);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.agents-page .sidebar-footer {
+  padding: 12px 10px;
+  border-top: 1px solid var(--color-border);
+}
+
+.agents-page .sidebar-help {
+  margin: 10px;
+  background: linear-gradient(135deg, #1e3a5f 0%, #0f2240 100%);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  color: #fff;
+}
+
+.agents-page .sidebar-help h4 {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.agents-page .sidebar-help p {
+  font-size: 11px;
+  opacity: .7;
+  margin-bottom: 10px;
+}
+
+.agents-page .sidebar-help a {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  text-decoration: none;
+  opacity: .85;
+}
+
+/* ── 4. MAIN AREA ─────────────────────────────────────────────── */
+.agents-page .main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* ── 5. TOPBAR ────────────────────────────────────────────────── */
+.agents-page .topbar {
+  height: var(--topbar-h);
+  background: var(--color-sidebar-bg);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  flex-shrink: 0;
+}
+
+.agents-page .topbar-left h1 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.agents-page .topbar-left p {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.agents-page .topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.agents-page .topbar-notif {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  background: var(--color-border-light);
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+}
+
+.agents-page .notif-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  background: var(--color-primary);
+  border-radius: var(--radius-full);
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agents-page .topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  background: none;
+  border: none;
+}
+
+.agents-page .topbar-user:hover {
+  background: var(--color-border-light);
+}
+
+.agents-page .user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* ── 6. PAGE CONTENT (GRILLE 2 COLONNES) ──────────────────────── */
+.agents-page .page-content {
+  flex: 1;
+  padding: 20px 24px;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 16px;
+  align-content: start;
+}
+
+/* ── 7. CARDS ─────────────────────────────────────────────────── */
+.agents-page .card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow var(--transition);
+}
+
+.agents-page .card:hover {
+  box-shadow: var(--shadow-hover);
+}
+
+.agents-page .card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.agents-page .card-header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.agents-page .card-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+
+.agents-page .card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.agents-page .card-subtitle {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 1px;
+}
+
+.agents-page .card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── 8. STATUS PILLS ──────────────────────────────────────────── */
+.agents-page .status-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.agents-page .status-pill.online {
+  background: var(--color-online-bg);
+  color: var(--color-online);
+}
+
+.agents-page .status-pill.busy {
+  background: var(--color-busy-bg);
+  color: var(--color-busy);
+}
+
+.agents-page .status-pill.offline {
+  background: var(--color-offline-bg);
+  color: var(--color-offline);
+}
+
+.agents-page .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.agents-page .status-dot.online {
+  background: var(--color-online);
+}
+
+.agents-page .status-dot.busy {
+  background: var(--color-busy);
+}
+
+.agents-page .status-dot.offline {
+  background: var(--color-offline);
+}
+
+/* ── 9. FLUX DIAGRAM ──────────────────────────────────────────── */
+.agents-page .flux-diagram {
+  padding: 16px 20px;
+  overflow-x: auto;
+}
+
+.agents-page .flux-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.agents-page .flux-node-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  border: 2px solid var(--color-border);
+  background: #fff;
+  box-shadow: var(--shadow-card);
+}
+
+.agents-page .flux-node-icon.primary {
+  background: #1e3a5f;
+  border-color: #1e3a5f;
+  color: #fff;
+}
+
+.agents-page .flux-node-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--color-text);
+  max-width: 72px;
+}
+
+.agents-page .flux-arrow {
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-border) 0%, var(--color-primary) 100%);
+  position: relative;
+  margin: 0 2px;
+  min-width: 20px;
+}
+
+.agents-page .flux-arrow::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid var(--color-primary);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+}
+
+/* Tool box */
+.agents-page .tool-box {
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  min-width: 150px;
+}
+
+.agents-page .tool-box-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.agents-page .tool-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.agents-page .fork-diamond {
+  width: 18px;
+  height: 18px;
+  background: var(--color-border);
+  transform: rotate(45deg);
+  border-radius: 3px;
+}
+
+/* ── 10. COMPATIBILITY TABLE ──────────────────────────────────── */
+.agents-page .compat-table-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 8px 20px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.agents-page .compat-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 11px 20px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.agents-page .compat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.agents-page .compat-badge.compatible {
+  background: rgba(16, 185, 129, .12);
+  color: #059669;
+}
+
+.agents-page .compat-badge.alert {
+  background: rgba(245, 158, 11, .12);
+  color: #d97706;
+}
+
+.agents-page .compat-badge.incompatible {
+  background: rgba(239, 68, 68, .12);
+  color: #dc2626;
+}
+
+/* ── 11. DELEGATION TABLE ─────────────────────────────────────── */
+.agents-page .delegation-table-header {
+  display: grid;
+  grid-template-columns: 1fr 100px 120px 36px;
+  padding: 8px 20px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.agents-page .delegation-row {
+  display: grid;
+  grid-template-columns: 1fr 100px 120px 36px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--color-border-light);
+  align-items: center;
+}
+
+.agents-page .agent-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.agents-page .agent-desc,
+.agents-page .agent-role {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+/* ── 12. PERFORMANCE TABLE & CHART ────────────────────────────── */
+.agents-page .perf-table-header {
+  display: grid;
+  grid-template-columns: 1fr 70px 60px 60px;
+  padding: 8px 20px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.agents-page .perf-row {
+  display: grid;
+  grid-template-columns: 1fr 70px 60px 60px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--color-border-light);
+  font-size: 12px;
+}
+
+.agents-page .chart-wrap {
+  padding: 16px 20px 18px;
+}
+
+.agents-page .chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 110px;
+  padding-bottom: 24px;
+  position: relative;
+}
+
+.agents-page .bar-group {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  flex: 1;
+}
+
+.agents-page .bar {
+  flex: 1;
+  border-radius: 4px 4px 0 0;
+  min-width: 10px;
+}
+
+.agents-page .bar.f1 {
+  background: var(--color-chart-f1);
+}
+
+.agents-page .bar.recall {
+  background: var(--color-chart-recall);
+}
+
+/* ── 13. BOUTONS ──────────────────────────────────────────────── */
+.agents-page .chevron-btn,
+.agents-page .collapse-btn,
+.agents-page .dots-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+}
+
+.agents-page .chevron-btn:hover,
+.agents-page .collapse-btn:hover,
+.agents-page .dots-btn:hover {
+  background: var(--color-border-light);
+  color: var(--color-text);
+}
+
+.agents-page .collapse-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 3px 10px;
+}
+
+/* ── 14. ANIMATIONS ───────────────────────────────────────────── */
+@keyframes fadeInAgents {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.agents-page .fade-in {
+  animation: fadeInAgents 0.35s var(--transition) both;
+}
+
+/* ── 15. RESPONSIVE ───────────────────────────────────────────── */
+@media (max-width: 1000px) {
+  .agents-page .page-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .agents-page .sidebar {
+    display: none;
+  }
+  
+  .agents-page .page-content {
+    padding: 12px;
+  }
+}
+/* -- DARK THEME OVERRIDES -- */
+[data-theme="dark"] .agents-page {
+  --color-bg:           #0a0e1a;
+  --color-sidebar-bg:   #0f1525;
+  --color-card:         #151c2e;
+  --color-border:       #243049;
+  --color-border-light: #1a2238;
+  --color-text:         #e6ecf5;
+  --color-text-muted:   #8896b3;
+}
+
+[data-theme="dark"] .agents-page { background: #0a0e1a; }
+[data-theme="dark"] .agents-page .card { background: #151c2e; border-color: #243049; }
+[data-theme="dark"] .agents-page .card:hover { background: #1a2238; }
+[data-theme="dark"] .agents-page .sidebar-help { background: linear-gradient(135deg, #151c2e 0%, #0f1525 100%); }
+[data-theme="dark"] .agents-page .sidebar-help h4,
+[data-theme="dark"] .agents-page .sidebar-help p,
+[data-theme="dark"] .agents-page .sidebar-help a { color: #e6ecf5; }
+[data-theme="dark"] .agents-page .flux-node-icon { background: #151c2e; border-color: #243049; }
+[data-theme="dark"] .agents-page .tool-box { background: #0f1525; border-color: #243049; }
+[data-theme="dark"] .agents-page .tool-box-title { color: #e6ecf5; }
+[data-theme="dark"] .agents-page .tool-item { color: #8896b3; border-bottom-color: #1a2238; }
+[data-theme="dark"] .agents-page .compat-row { border-bottom-color: #1a2238; }
+[data-theme="dark"] .agents-page .compat-table-header { color: #8896b3; border-bottom-color: #1a2238; }
+[data-theme="dark"] .agents-page .delegation-table-header { color: #8896b3; border-bottom-color: #1a2238; }
+[data-theme="dark"] .agents-page .delegation-row { border-bottom-color: #1a2238; }
+[data-theme="dark"] .agents-page .agent-name { color: #e6ecf5; }
+[data-theme="dark"] .agents-page .agent-desc,
+[data-theme="dark"] .agents-page .agent-role { color: #8896b3; }
+[data-theme="dark"] .agents-page .perf-table-header { color: #8896b3; border-bottom-color: #1a2238; }
+[data-theme="dark"] .agents-page .perf-row { border-bottom-color: #1a2238; color: #e6ecf5; }
+[data-theme="dark"] .agents-page .user-avatar { background: linear-gradient(135deg, #6366f1, #8b5cf6); }

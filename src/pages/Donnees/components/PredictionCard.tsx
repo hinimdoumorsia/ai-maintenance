@@ -2,6 +2,7 @@
 // Panneau gauche : Prédiction par Fichier + Saisie Manuelle
 
 import React, { useRef, useState } from 'react';
+import { Bot } from 'lucide-react';
 import { PredictionManuelle, StatusType } from '../types';
 
 interface Props {
@@ -28,7 +29,7 @@ export const PredictionCard: React.FC<Props> = ({
   return (
     <div className="card prediction-card">
       <h2 className="card-title">
-        <span className="card-icon">🤖</span>
+        <Bot size={18} style={{ flexShrink: 0 }} />
         Interface de Prédiction &amp; Données
       </h2>
 
@@ -37,9 +38,9 @@ export const PredictionCard: React.FC<Props> = ({
 
       <div className="upload-zone">
         <div className="upload-formats">
-          <span className="format-badge csv">📄 CSV</span>
-          <span className="format-badge xlsx">📊 X</span>
-          <span className="format-badge json">{ }</span>
+          <span className="format-badge csv">CSV</span>
+          <span className="format-badge xlsx">Excel</span>
+          <span className="format-badge json">JSON</span>
         </div>
 
         <p className="upload-label">

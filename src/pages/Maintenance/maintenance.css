@@ -1,0 +1,440 @@
+/* ══════════════════════════════════════════════════════════
+   MAINTENANCE — maintenance.css
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Layout principal ── */
+.maint-main {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f9fafb;
+  overflow-y: auto;
+}
+
+.maint-body {
+  padding: 20px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Tabs ── */
+.maint-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0;
+}
+
+.maint-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  border-radius: 6px 6px 0 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.maint-tab:hover {
+  color: #374151;
+  background: #f3f4f6;
+}
+
+.maint-tab.active {
+  color: #f97316;
+  border-bottom-color: #f97316;
+  background: #fff7ed;
+}
+
+.maint-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 9px;
+  font-weight: 700;
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.maint-tab.active .maint-tab-badge {
+  background: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+}
+
+/* ── Stats summary bar ── */
+.maint-stats-bar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.maint-stat {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.maint-stat-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.maint-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.maint-stat-meta {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.maint-stat.urgent .maint-stat-value { color: #ef4444; }
+.maint-stat.warn   .maint-stat-value { color: #f97316; }
+
+/* ── Card générique ── */
+.maint-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.maint-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.maint-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* ── Filtre bar ── */
+.maint-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #f9fafb;
+  border-bottom: 1px solid #f3f4f6;
+  flex-wrap: wrap;
+}
+
+.maint-filter-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.maint-filter-btn {
+  padding: 4px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  background: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+  transition: all 0.1s;
+}
+
+.maint-filter-btn:hover { background: #f3f4f6; }
+.maint-filter-btn.active {
+  background: #fff7ed;
+  border-color: #f97316;
+  color: #f97316;
+  font-weight: 600;
+}
+
+/* ── BT Row / Planning row ── */
+.maint-bt-header {
+  display: grid;
+  grid-template-columns: 70px 1fr 110px 70px 100px 90px 80px;
+  gap: 10px;
+  padding: 8px 16px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 9px;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.maint-bt-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 110px 70px 100px 90px 80px;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid #f9fafb;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.1s;
+  font-size: 12px;
+}
+
+.maint-bt-row:last-child { border-bottom: none; }
+.maint-bt-row:hover { background: #fafafa; }
+
+.maint-bt-id {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7280;
+}
+
+.maint-bt-machine {
+  font-weight: 600;
+  color: #111827;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.maint-bt-type {
+  font-size: 10px;
+  color: #6b7280;
+}
+
+/* Status badges */
+.maint-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.maint-status.cree       { background: #f3f4f6;               color: #6b7280; }
+.maint-status.planifie   { background: rgba(59,130,246,0.1);  color: #3b82f6; }
+.maint-status.en_cours   { background: rgba(249,115,22,0.1);  color: #f97316; }
+.maint-status.termine    { background: rgba(16,185,129,0.1);  color: #10b981; }
+.maint-status.annule     { background: rgba(107,114,128,0.1); color: #9ca3af; }
+
+/* Priority */
+.maint-prio {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.maint-prio.p1 { background: rgba(239,68,68,0.1);  color: #ef4444; }
+.maint-prio.p2 { background: rgba(249,115,22,0.1); color: #f97316; }
+.maint-prio.p3 { background: rgba(59,130,246,0.1); color: #3b82f6; }
+.maint-prio.p4 { background: #f3f4f6;              color: #9ca3af; }
+
+/* ── Planning calendar style ── */
+.maint-plan-header {
+  display: grid;
+  grid-template-columns: 70px 1fr 80px 100px 90px 110px;
+  gap: 10px;
+  padding: 8px 16px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 9px;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.maint-plan-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 80px 100px 90px 110px;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid #f9fafb;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.1s;
+  font-size: 12px;
+}
+
+.maint-plan-row:last-child { border-bottom: none; }
+.maint-plan-row:hover { background: #fafafa; }
+
+.maint-date-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+}
+
+.maint-date-day   { font-size: 16px; font-weight: 700; color: #111827; line-height: 1; }
+.maint-date-month { font-size: 9px; color: #9ca3af; text-transform: uppercase; }
+
+/* ── Stocks table ── */
+.maint-stock-header {
+  display: grid;
+  grid-template-columns: 80px 1fr 80px 80px 80px 90px 90px;
+  gap: 10px;
+  padding: 8px 16px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 9px;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.maint-stock-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 80px 80px 80px 90px 90px;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f9fafb;
+  align-items: center;
+  font-size: 12px;
+  transition: background 0.1s;
+}
+
+.maint-stock-row:hover { background: #fafafa; }
+.maint-stock-row.critique { background: rgba(239,68,68,0.03); border-left: 3px solid #ef4444; }
+.maint-stock-row:last-child { border-bottom: none; }
+
+.maint-stock-ref {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.maint-stock-name {
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 1px;
+  font-size: 12px;
+}
+
+.maint-stock-cat {
+  font-size: 10px;
+  color: #6b7280;
+}
+
+.maint-stock-qty {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.maint-stock-qty.critique { color: #ef4444; }
+.maint-stock-qty.warn     { color: #f97316; }
+
+/* ── Skeleton ── */
+.maint-skeleton {
+  background: linear-gradient(90deg, #f3f4f6 25%, #e9eaec 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: maint-shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+
+@keyframes maint-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.maint-empty {
+  padding: 40px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1100px) {
+  .maint-stats-bar { grid-template-columns: repeat(3, 1fr); }
+  .maint-bt-header,
+  .maint-bt-row    { grid-template-columns: 60px 1fr 80px 60px 90px 80px 60px; }
+}
+
+@media (max-width: 800px) {
+  .maint-stats-bar { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* -- DARK THEME OVERRIDES -- */
+[data-theme="dark"] .maint-main { background: #0a0e1a; }
+[data-theme="dark"] .maint-tabs { border-bottom-color: #243049; }
+[data-theme="dark"] .maint-tab { color: #8896b3; }
+[data-theme="dark"] .maint-tab:hover { color: #e6ecf5; background: #1a2238; }
+[data-theme="dark"] .maint-tab.active { color: #f97316; background: rgba(249,115,22,0.1); }
+[data-theme="dark"] .maint-stat { background: #151c2e; border-color: #243049; }
+[data-theme="dark"] .maint-stat-label { color: #5a6788; }
+[data-theme="dark"] .maint-stat-value { color: #e6ecf5; }
+[data-theme="dark"] .maint-stat-meta { color: #5a6788; }
+[data-theme="dark"] .maint-card { background: #151c2e; border-color: #243049; }
+[data-theme="dark"] .maint-card-head { border-bottom-color: #1a2238; }
+[data-theme="dark"] .maint-card-title { color: #e6ecf5; }
+[data-theme="dark"] .maint-filter-bar { background: #151c2e; border-bottom-color: #1a2238; }
+[data-theme="dark"] .maint-filter-label { color: #5a6788; }
+[data-theme="dark"] .maint-filter-btn { border-color: #243049; color: #8896b3; }
+[data-theme="dark"] .maint-filter-btn:hover { background: #1a2238; }
+[data-theme="dark"] .maint-filter-btn.active { background: rgba(249,115,22,0.1); border-color: #f97316; color: #f97316; }
+[data-theme="dark"] .maint-bt-header { background: #0f1525; border-bottom-color: #243049; color: #5a6788; }
+[data-theme="dark"] .maint-bt-row { border-bottom-color: #1a2238; }
+[data-theme="dark"] .maint-bt-row:hover { background: #1a2238; }
+[data-theme="dark"] .maint-bt-id { color: #8896b3; }
+[data-theme="dark"] .maint-bt-machine { color: #e6ecf5; }
+[data-theme="dark"] .maint-bt-type { color: #8896b3; }
+[data-theme="dark"] .maint-plan-header { background: #0f1525; border-bottom-color: #243049; color: #5a6788; }
+[data-theme="dark"] .maint-plan-row { border-bottom-color: #1a2238; }
+[data-theme="dark"] .maint-plan-row:hover { background: #1a2238; }
+[data-theme="dark"] .maint-date-cell { background: #0f1525; border-color: #243049; }
+[data-theme="dark"] .maint-date-day { color: #e6ecf5; }
+[data-theme="dark"] .maint-date-month { color: #5a6788; }
+[data-theme="dark"] .maint-stock-header { background: #0f1525; border-bottom-color: #243049; color: #5a6788; }
+[data-theme="dark"] .maint-stock-row { border-bottom-color: #1a2238; }
+[data-theme="dark"] .maint-stock-row:hover { background: #1a2238; }
+[data-theme="dark"] .maint-stock-ref { color: #8896b3; }
+[data-theme="dark"] .maint-stock-name { color: #e6ecf5; }
+[data-theme="dark"] .maint-stock-cat { color: #8896b3; }
+[data-theme="dark"] .maint-empty { color: #5a6788; }
+[data-theme="dark"] .maint-skeleton {
+  background: linear-gradient(90deg, #1a2238 25%, #243049 50%, #1a2238 75%);
+  background-size: 200% 100%;
+}
