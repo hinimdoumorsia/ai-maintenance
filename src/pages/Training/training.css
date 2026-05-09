@@ -1,0 +1,350 @@
+/* ==============================
+   TRAINING PAGE STYLES
+   ============================== */
+
+.training-layout {
+  display: flex;
+  min-height: 100vh;
+  background: var(--gray-50);
+}
+
+.sidebar {
+  width: 220px;
+  min-width: 220px;
+  background: var(--white);
+  border-right: 1px solid var(--gray-200);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  z-index: 100;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px 20px;
+  border-bottom: 1px solid var(--gray-100);
+  margin-bottom: 8px;
+}
+
+.brand-icon {
+  font-size: 22px;
+}
+
+.brand-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--blue-600);
+  letter-spacing: 0.04em;
+}
+
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 10px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--gray-500);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s;
+  text-align: left;
+  width: 100%;
+}
+
+.nav-item:hover {
+  background: var(--gray-100);
+  color: var(--gray-900);
+}
+
+.nav-item.active {
+  background: var(--orange-50);
+  color: var(--orange-500);
+}
+
+.nav-icon {
+  font-size: 16px;
+}
+
+.sidebar-bottom {
+  padding: 0 10px;
+  border-top: 1px solid var(--gray-100);
+  padding-top: 12px;
+}
+
+.help-card {
+  background: var(--blue-600);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin-top: 12px;
+  color: white;
+}
+
+.help-title {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.help-link {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.help-link:hover {
+  color: white;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  margin-left: 220px;
+}
+
+.prediction-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  background: var(--white);
+  border-bottom: 1px solid var(--gray-200);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.header-icon-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--orange-50);
+}
+
+.header-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gray-900);
+}
+
+.header-subtitle {
+  font-size: 12px;
+  color: var(--gray-500);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.notif-bell {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  color: var(--gray-700);
+}
+
+.notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--orange-500);
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--blue-600);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.training-content-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 18px;
+  padding: 20px 28px;
+  align-items: start;
+}
+
+.training-left-col,
+.training-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-200);
+  padding: 16px;
+}
+
+.btn-start-training-main {
+  background: var(--orange-500);
+  color: white;
+  border-radius: var(--radius-sm);
+  padding: 16px 20px;
+  font-size: 16px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s;
+}
+
+.btn-start-training-main:hover:not(:disabled) {
+  background: #ea6c0a;
+}
+
+.btn-start-training-main:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.training-top-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.training-bottom-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.btn-download-report-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--blue-600);
+  font-weight: 500;
+  background: var(--white);
+  cursor: pointer;
+  justify-content: center;
+}
+
+/* Dark theme overrides */
+[data-theme="dark"] .training-layout {
+  background: #0a0e1a;
+}
+
+[data-theme="dark"] .card {
+  background: #151c2e;
+  border-color: #243049;
+}
+
+[data-theme="dark"] .main-content {
+  background: #0a0e1a;
+}
+
+[data-theme="dark"] .prediction-header {
+  background: #0f1525;
+  border-color: #243049;
+}
+
+[data-theme="dark"] .header-title {
+  color: #e6ecf5;
+}
+
+[data-theme="dark"] .header-subtitle {
+  color: #8896b3;
+}
+
+[data-theme="dark"] .notif-bell {
+  border-color: #243049;
+  color: #8896b3;
+}
+
+[data-theme="dark"] .user-chip {
+  border-color: #243049;
+  color: #e6ecf5;
+}
+
+[data-theme="dark"] .sidebar {
+  background: #0f1525;
+  border-right-color: #243049;
+}
+
+[data-theme="dark"] .nav-item {
+  color: #8896b3;
+}
+
+[data-theme="dark"] .nav-item:hover {
+  background: #1a2238;
+  color: #e6ecf5;
+}
+
+[data-theme="dark"] .nav-item.active {
+  background: rgba(249, 115, 22, 0.1);
+  color: var(--orange-500);
+}
+
+[data-theme="dark"] .help-card {
+  background: #1e40af;
+}
