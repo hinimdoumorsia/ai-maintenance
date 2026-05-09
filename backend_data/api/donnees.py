@@ -41,9 +41,15 @@ def _ensure_dataset_table():
                 eda_results         TEXT,
                 created_at          TEXT DEFAULT (datetime('now')),
                 processed_at        TEXT,
-                error_message       TEXT
+                error_message       TEXT,
+                ingestion_mode      TEXT DEFAULT 'exploratory'
             )
         """)
+        # Migration pour les BDs existantes (ignore si la colonne existe déjà)
+        try:
+            conn.execute("ALTER TABLE dataset ADD COLUMN ingestion_mode TEXT DEFAULT 'exploratory'")
+        except Exception:
+            pass
 
 
 def _update_db(dataset_id: int, status: str, **kwargs):
@@ -98,8 +104,12 @@ async def upload_dataset(
     file: UploadFile = File(...),
     name: str = Form(...),
     description: str = Form(""),
+    mode: str = Form("exploratory"),
 ):
-    """Upload un dataset et lance l'analyse EDA en arrière-plan."""
+    """Upload un dataset et lance l'analyse EDA en arrière-plan.
+    mode='exploratory' : EDA uniquement, aucune ingestion dashboard.
+    mode='company'     : EDA + intégration automatique dans le dashboard entreprise.
+    """
     _ensure_dataset_table()
 
     suffix = Path(file.filename or "file").suffix.lower()
@@ -108,6 +118,8 @@ async def upload_dataset(
             status_code=400,
             detail=f"Format non supporté : {suffix}. Formats acceptés : {', '.join(ALLOWED_EXTENSIONS)}",
         )
+
+    ingest = (mode == "company")
 
     # Sauvegarde physique
     content = await file.read()
@@ -119,15 +131,15 @@ async def upload_dataset(
     with db_session() as conn:
         cur = conn.execute(
             """INSERT INTO dataset (name, description, original_filename, upload_path,
-               file_type, file_size_bytes, status)
-               VALUES (?, ?, ?, ?, ?, ?, 'uploaded')""",
+               file_type, file_size_bytes, status, ingestion_mode)
+               VALUES (?, ?, ?, ?, ?, ?, 'uploaded', ?)""",
             (name, description, file.filename, str(upload_path),
-             suffix.lstrip("."), len(content)),
+             suffix.lstrip("."), len(content), mode),
         )
         dataset_id = cur.lastrowid
 
     # Lancement EDA en arrière-plan
-    background_tasks.add_task(run_eda, dataset_id, str(upload_path), _update_db)
+    background_tasks.add_task(run_eda, dataset_id, str(upload_path), _update_db, ingest)
 
     return {"dataset_id": dataset_id, "status": "uploaded", "message": "EDA lancé en arrière-plan"}
 
@@ -139,7 +151,8 @@ def list_datasets():
     with db_session() as conn:
         rows = conn.execute(
             "SELECT id, name, description, original_filename, file_type, file_size_bytes, "
-            "n_rows, n_cols, detected_type, status, created_at, processed_at, error_message "
+            "n_rows, n_cols, detected_type, status, created_at, processed_at, error_message, "
+            "ingestion_mode "
             "FROM dataset ORDER BY created_at DESC"
         ).fetchall()
     return rows_to_list(rows)
@@ -160,6 +173,35 @@ def get_dataset(dataset_id: int):
         except Exception:
             pass
     return d
+
+
+@router.post("/datasets/{dataset_id}/integrate")
+def integrate_dataset(dataset_id: int):
+    """Intègre manuellement un dataset dans le dashboard entreprise (ingestion BD).
+    Utilisé pour les datasets uploadés en mode 'exploratory' que l'utilisateur
+    décide ensuite d'intégrer après avoir vu les résultats EDA.
+    """
+    from agents.eda_agent import _ingest_dashboard, _detect_data_type
+    from agents.file_parser import parse_file
+
+    ds = _get_or_404(dataset_id)
+    if ds["status"] != "processed":
+        raise HTTPException(status_code=400, detail="Le dataset doit être traité (EDA terminé) avant intégration.")
+
+    upload_path = Path(ds.get("upload_path", ""))
+    if not upload_path.exists():
+        raise HTTPException(status_code=404, detail="Fichier source introuvable sur le serveur.")
+
+    try:
+        frames = parse_file(upload_path)
+        df = list(frames.values())[0]
+        data_type = _detect_data_type(df)
+        _ingest_dashboard(df, data_type, dataset_id)
+        with db_session() as conn:
+            conn.execute("UPDATE dataset SET ingestion_mode = 'company' WHERE id = ?", (dataset_id,))
+        return {"status": "integrated", "message": "Dataset intégré au dashboard entreprise."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'intégration : {e}")
 
 
 @router.delete("/datasets/{dataset_id}")
@@ -245,18 +287,53 @@ def download_preprocessing_trace(dataset_id: int):
     return FileResponse(str(txt_files[0]), filename=f"preprocessing_{row['name']}.txt", media_type="text/plain")
 
 
+@router.get("/datasets/{dataset_id}/download/eda-json")
+def download_eda_json(dataset_id: int):
+    """Exporte les résultats EDA complets en JSON (pour data scientists)."""
+    from fastapi.responses import Response
+    row = _get_or_404(dataset_id)
+    eda_raw = row.get("eda_results")
+    if not eda_raw:
+        raise HTTPException(status_code=404, detail="Résultats EDA non disponibles. Relancer l'EDA.")
+    # Nettoyage : retirer les images base64 (trop lourdes pour l'export)
+    try:
+        results = json.loads(eda_raw)
+        for frame in results:
+            for plot in frame.get("plots", []):
+                plot.pop("b64", None)  # supprimer les données binaires
+        clean_json = json.dumps(results, ensure_ascii=False, indent=2, default=str)
+    except Exception:
+        clean_json = eda_raw
+    name = row.get("name", f"dataset_{dataset_id}")
+    return Response(
+        content=clean_json,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="eda_{name}.json"'},
+    )
+
+
 @router.get("/datasets/{dataset_id}/preview")
-def preview_dataset(dataset_id: int, n: int = 15):
-    """Retourne les N premières lignes du fichier traité (pour aperçu DataFrame)."""
+def preview_dataset(dataset_id: int, n: int = 15, from_upload: bool = False):
+    """Retourne les N premières lignes (fichier traité par défaut, ou upload brut si from_upload)."""
     import pandas as _pd
+    n = max(1, min(int(n), 100_000))
     with db_session() as conn:
-        row = conn.execute("SELECT processed_path FROM dataset WHERE id = ?",
-                           (dataset_id,)).fetchone()
-    if not row or not row["processed_path"]:
-        raise HTTPException(status_code=404, detail="Fichier traité non disponible")
-    p = Path(row["processed_path"])
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="Fichier introuvable sur disque")
+        row = conn.execute(
+            "SELECT upload_path, processed_path FROM dataset WHERE id = ?",
+            (dataset_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Dataset introuvable")
+    if from_upload:
+        p = Path(row["upload_path"] or "")
+        if not p.exists():
+            raise HTTPException(status_code=404, detail="Fichier d'upload introuvable")
+    else:
+        if not row["processed_path"]:
+            raise HTTPException(status_code=404, detail="Fichier traité non disponible")
+        p = Path(row["processed_path"])
+        if not p.exists():
+            raise HTTPException(status_code=404, detail="Fichier introuvable sur disque")
     df = _pd.read_csv(p, nrows=n)
     return {
         "columns": df.columns.tolist(),
@@ -471,12 +548,29 @@ def get_dataset_vibration_analysis(dataset_id: str):
 
 
 def _fallback(summary=None, trend=None, ck=None, zones=None, defauts=None, raw_data=None):
-    s = summary or {}
     z = zones or {}
+    rd = raw_data or []
+    # Compute vrms_moyen from actual raw_data values
+    vrms_vals = [r["v_rms_mm_s"] for r in rd if r.get("v_rms_mm_s") is not None]
+    vrms_moyen = round(sum(vrms_vals) / len(vrms_vals), 2) if vrms_vals else 2.8
+    # Count unique machines in Zone D (vrms >= 7.1) using last reading per machine
+    last_vrms: dict = {}
+    for r in rd:
+        mid = r.get("machine_id") or ""
+        v = r.get("v_rms_mm_s")
+        if mid and v is not None:
+            last_vrms[mid] = float(v)
+    machines_zone_d = sum(1 for v in last_vrms.values() if v >= 7.1)
+    pct_zone_ab = round(z.get("zone_a", 0) + z.get("zone_b", 0), 1) if sum(z.values()) > 0 else 78
     return {
-        "resume": {"vrms_moyen": s.get("vrms_moyen", 2.8), "pct_zone_ab": z.get("zone_a", 0) + z.get("zone_b", 0) if sum(z.values()) > 0 else 78, "machines_zone_d": z.get("zone_d", 0), "defauts_detectes": len(defauts) if defauts else 0},
+        "resume": {
+            "vrms_moyen": vrms_moyen,
+            "pct_zone_ab": pct_zone_ab,
+            "machines_zone_d": machines_zone_d,
+            "defauts_detectes": len(defauts) if defauts else 0,
+        },
         "stats_iso": z if sum(z.values()) > 0 else {"zone_a": 45, "zone_b": 33, "zone_c": 15, "zone_d": 7},
-        "tendance": trend or [], "crest_kurtosis": ck or [], "defauts": defauts or [], "raw_data": raw_data or [],
+        "tendance": trend or [], "crest_kurtosis": ck or [], "defauts": defauts or [], "raw_data": rd,
     }
 
 

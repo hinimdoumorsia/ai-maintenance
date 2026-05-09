@@ -9,6 +9,8 @@ import {
   Bell, ChevronDown, Cpu, ClipboardList, Sun, Moon,
 } from "lucide-react";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useAuth } from "../../contexts/AuthContext";
+import { LogOut } from "lucide-react";
 import "./layout.css";
 
 // ─── Ordre canonique du menu (conforme à la maquette) ──────────────────────
@@ -31,16 +33,12 @@ interface AppLayoutProps {
   notifCount?: number;
 }
 
-const AppLayout: React.FC<AppLayoutProps> = ({
-  children,
-  title,
-  subtitle,
-  icon: PageIcon,
-  notifCount = 0,
-}) => {
-  const navigate    = useNavigate();
-  const location    = useLocation();
+const AppLayout: React.FC<AppLayoutProps> = ({ title, subtitle, icon: PageIcon, children, notifCount = 0 }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
+  
   const [collapsed,   setCollapsed]   = useState(false);
   const [mobileOpen,  setMobileOpen]  = useState(false);
 
@@ -123,7 +121,13 @@ const AppLayout: React.FC<AppLayoutProps> = ({
 
           <div className="al-help">
             <p className="al-help-title">Besoin d'aide?</p>
-            <a href="#" className="al-help-link">Voir la documentation</a>
+            <button
+              className="al-help-link"
+              onClick={() => handleNav('/aide-documentation')}
+              title={collapsed ? 'Aide & Documentation' : undefined}
+            >
+              Aide & Documentation
+            </button>
           </div>
         </div>
       </aside>
@@ -160,11 +164,20 @@ const AppLayout: React.FC<AppLayoutProps> = ({
                 <span className="al-ph-badge">{notifCount}</span>
               )}
             </button>
-            <button className="al-ph-user" onClick={() => navigate('/parametres')}>
-              <div className="al-ph-avatar">A</div>
-              <span>Admin</span>
-              <ChevronDown size={13} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button className="al-ph-user" onClick={() => navigate('/parametres')}>
+                <div className="al-ph-avatar">{user?.prenom?.[0] || 'U'}</div>
+                <span>{user?.prenom} {user?.nom}</span>
+              </button>
+              <button 
+                className="al-ph-notif" 
+                title="Déconnexion" 
+                onClick={logout}
+                style={{ color: 'var(--theme-text-muted)' }}
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
           </div>
         </header>
 

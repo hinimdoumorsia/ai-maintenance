@@ -7,6 +7,10 @@ import {
   CheckCircle2,
   Clock,
   Cpu,
+  Download,
+  Eye,
+  Layout,
+  List,
   Loader2,
   Search,
   Wrench,
@@ -46,6 +50,7 @@ const DonneesParc: React.FC = () => {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [viewMode, setViewMode] = useState<'synoptic' | 'table'>('synoptic');
 
   const mockMachines: Machine[] = [
     { code: 'M001', nom: 'Compresseur Atlas C-1', type: 'Compresseur', atelier: 'A', statut: 'Actif', classe_iso: 'II', age_jours: 420, nb_capteurs: 6, zone_iso: 'B', derniere_mesure: '2026-05-05 10:30', capteurs: [{ type: 'Accéléromètre', position: 'Roulement 1', statut: 'Actif', batterie: 85 }, { type: 'Vélocimètre', position: 'Sortie arbre', statut: 'Actif', batterie: 72 }], defauts: [{ type: 'Balourd léger', severite: 'Faible' }], dernieres_mesures: [{ date: '2026-05-05', vrms: 2.8, zone: 'B' }, { date: '2026-05-04', vrms: 2.6, zone: 'B' }] },
@@ -89,12 +94,41 @@ const DonneesParc: React.FC = () => {
 
   if (ctxLoading) return <div className="parc-page"><div className="eda-loading"><Loader2 size={20} className="spin" /> Chargement...</div></div>;
   if (source === 'dataset' && !isCompatible) {
-    return <div className="parc-page"><IncompatibleDatasetMessage page="Parc Machines" datasetName={selectedDs?.name || 'inconnu'} analysisType="machine" /></div>;
+    return (
+      <div className="parc-page">
+        <IncompatibleDatasetMessage
+          page="Parc Machines"
+          datasetName={selectedDs?.name || 'inconnu'}
+          analysisType="machine"
+          datasetDetectedType={selectedDs?.detected_type}
+        />
+      </div>
+    );
   }
 
   const handleSort = (col: string) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortCol(col); setSortDir('asc'); }
+  };
+
+  // Export CSV de la liste machines filtrée
+  const handleExportCSV = () => {
+    if (filtered.length === 0) return;
+    const headers = ['Code', 'Nom', 'Type', 'Atelier', 'Statut', 'Classe ISO', 'Age (j)', 'Capteurs', 'Zone ISO', 'Dernière mesure'];
+    const rows = filtered.map(m => [
+      m.code, m.nom, m.type, m.atelier, m.statut, m.classe_iso,
+      String(m.age_jours), String(m.nb_capteurs), m.zone_iso, m.derniere_mesure
+    ]);
+    const csv = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `parc_machines_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -123,7 +157,7 @@ const DonneesParc: React.FC = () => {
         <div className="parc-stat"><div className="parc-stat-value" style={{ color: '#dc2626' }}>{stats.alarme}</div><div className="parc-stat-label">Zone C/D</div></div>
       </div>
 
-      {/* Filtres */}
+      {/* Filtres + Toggle vue + Export */}
       <div className="parc-toolbar">
         <div className="parc-search">
           <Search size={14} />
@@ -138,9 +172,102 @@ const DonneesParc: React.FC = () => {
         <select value={filterZone} onChange={e => setFilterZone(e.target.value)}>
           {zones.map(z => <option key={z} value={z}>{z === 'Tous' ? 'Toutes zones' : `Zone ${z}`}</option>)}
         </select>
+
+        <div className="parc-view-toggle">
+          <button
+            className={`parc-view-btn${viewMode === 'synoptic' ? ' active' : ''}`}
+            onClick={() => setViewMode('synoptic')}
+            title="Vue synoptique (Mode Supervision XPR)"
+          >
+            <Layout size={13} /> Synoptique
+          </button>
+          <button
+            className={`parc-view-btn${viewMode === 'table' ? ' active' : ''}`}
+            onClick={() => setViewMode('table')}
+            title="Vue tableau"
+          >
+            <List size={13} /> Tableau
+          </button>
+        </div>
+
+        <button
+          className="parc-export-btn"
+          onClick={handleExportCSV}
+          disabled={filtered.length === 0}
+          title="Exporter la liste filtrée en CSV"
+        >
+          <Download size={13} /> Export CSV
+        </button>
       </div>
 
-      {/* Tableau */}
+      {/* ── VUE SYNOPTIQUE (Mode Supervision XPR) ── */}
+      {viewMode === 'synoptic' && (
+        <div className="parc-synoptic">
+          <p style={{ fontSize: 11.5, color: '#6b7280', marginBottom: 10 }}>
+            Vue synoptique inspirée du <strong>Mode Supervision</strong> d'OneProd XPR.
+            Chaque carte représente une machine ; sa couleur de bordure reflète sa zone ISO la plus aggravante.
+            Cliquez sur une carte pour voir le détail.
+          </p>
+          <div className="parc-synoptic-grid">
+            {filtered.map(m => {
+              const zoneColor = ZONE_COLORS[m.zone_iso] || '#6b7280';
+              const isExpanded = expanded === m.code;
+              const statusColor = m.statut === 'Actif' ? '#16a34a' : m.statut === 'En alarme' ? '#dc2626' : '#f97316';
+              return (
+                <div
+                  key={m.code}
+                  className={`parc-synoptic-card${isExpanded ? ' expanded' : ''}`}
+                  style={{ borderTopColor: zoneColor, borderTopWidth: 4 }}
+                  onClick={() => setExpanded(isExpanded ? null : m.code)}
+                >
+                  <div className="parc-synoptic-header">
+                    <span className="parc-synoptic-code">{m.code}</span>
+                    <span className="parc-synoptic-zone" style={{ background: zoneColor, color: '#fff' }}>
+                      Z{m.zone_iso}
+                    </span>
+                  </div>
+                  <div className="parc-synoptic-name" title={m.nom}>{m.nom}</div>
+                  <div className="parc-synoptic-info">
+                    <span className="parc-synoptic-type">{m.type}</span>
+                    <span style={{ color: '#9ca3af' }}>·</span>
+                    <span>Atelier {m.atelier}</span>
+                  </div>
+                  <div className="parc-synoptic-meta">
+                    <span title="Statut" style={{ color: statusColor, fontWeight: 600 }}>
+                      ● {m.statut}
+                    </span>
+                    <span title="Classe ISO">Cl. {m.classe_iso}</span>
+                    <span title="Âge">{m.age_jours}j</span>
+                    <span title="Capteurs">{m.nb_capteurs} cpt</span>
+                  </div>
+                  {(m.defauts && m.defauts.length > 0) ? (
+                    <div className="parc-synoptic-alerts">
+                      <AlertTriangle size={11} color="#dc2626" />
+                      {m.defauts.length} défaut{m.defauts.length > 1 ? 's' : ''} actif{m.defauts.length > 1 ? 's' : ''}
+                    </div>
+                  ) : (
+                    <div className="parc-synoptic-alerts" style={{ color: '#16a34a' }}>
+                      <CheckCircle2 size={11} /> RAS
+                    </div>
+                  )}
+                  <div className="parc-synoptic-footer">
+                    <Eye size={10} /> {m.derniere_mesure}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {filtered.length === 0 && (
+            <div className="parc-empty">
+              <Search size={32} color="#d1d5db" />
+              <p>Aucune machine ne correspond aux filtres</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── VUE TABLEAU ── */}
+      {viewMode === 'table' && (
       <div className="parc-table-wrap">
         <table className="parc-table">
           <thead>
@@ -198,6 +325,7 @@ const DonneesParc: React.FC = () => {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 };

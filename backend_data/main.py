@@ -12,7 +12,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from db.database import init_db
-from api import dashboard, donnees, admin, maintenance
+from api import dashboard, donnees, admin, maintenance, chatbot, auth
+from api.chatbot import init_chatbot
 
 app = FastAPI(
     title="AI Maintenance API",
@@ -33,12 +34,15 @@ app.add_middleware(
 @app.on_event("startup")
 def startup_event():
     init_db()
+    init_chatbot()
 
 # Routes
 app.include_router(dashboard.router,    prefix="/api/dashboard",    tags=["Dashboard"])
 app.include_router(donnees.router,      prefix="/api/donnees",      tags=["Données"])
 app.include_router(admin.router,        prefix="/api/admin",        tags=["Admin"])
 app.include_router(maintenance.router,  prefix="/api/maintenance",  tags=["Maintenance"])
+app.include_router(chatbot.router,      prefix="/api/chatbot",      tags=["Chatbot RAG"])
+app.include_router(auth.router,         prefix="/api/auth",         tags=["Authentification"])
 
 
 @app.get("/")

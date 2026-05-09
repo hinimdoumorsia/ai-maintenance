@@ -235,9 +235,9 @@ function alertRowClass(niveau: string): string {
 }
 
 function alertIcon(niveau: string): string {
-  if (niveau === "danger" || niveau === "critique") return "⚠";
+  if (niveau === "danger" || niveau === "critique") return "!";
   if (niveau === "info" || niveau === "information") return "ⓘ";
-  return "⚡";
+  return "*";
 }
 
 function formatTime(ts: string): string {
@@ -515,7 +515,7 @@ const DashboardPage: React.FC = () => {
         <div className="kpi-section cat-iot">
           <div className="kpi-section-head">
             <div className="kpi-section-title">
-              <div className="kpi-section-icon">⚡</div>
+              <div className="kpi-section-icon">IOT</div>
               <div>
                 <div className="kpi-section-name">Performance du réseau IoT</div>
                 <em>312 capteurs · 47 passerelles · données temps réel</em>
@@ -569,7 +569,7 @@ const DashboardPage: React.FC = () => {
         <div className="kpi-section cat-risk">
           <div className="kpi-section-head">
             <div className="kpi-section-title">
-              <div className="kpi-section-icon">⚠</div>
+              <div className="kpi-section-icon">RISK</div>
               <div>
                 <div className="kpi-section-name">Sécurité et conformité</div>
                 <em>Personnes, biens, environnement, réglementation</em>
@@ -595,7 +595,7 @@ const DashboardPage: React.FC = () => {
         <div className="kpi-section cat-workforce">
           <div className="kpi-section-head">
             <div className="kpi-section-title">
-              <div className="kpi-section-icon">⚙</div>
+              <div className="kpi-section-icon">OPS</div>
               <div>
                 <div className="kpi-section-name">Productivité et compétences</div>
                 <em>Wrench time, fix rate, certifications, planification</em>
@@ -752,12 +752,12 @@ const DashboardPage: React.FC = () => {
               {!loading && alertes.length === 0 && (
                 <>
                   {[
-                    {niveau:"danger",icon:"⚠",titre:"P-204 → Vrms dépassement zone D",meta:"9.8 mm/s · seuil 7.0 · BPFI détecté · ENVELOPPE",time:"12 min"},
-                    {niveau:"danger",icon:"⚠",titre:"C-118 → Désalignement aggravé",meta:"2×fr passe de 4.2 à 6.8 mm/s · axial",time:"1 h 24"},
-                    {niveau:"",icon:"⚡",titre:"R-077 → Cepstre : nouvelle bande lat.",meta:"Espacement = fr arbre intermédiaire · usure dent",time:"3 h 47"},
+                    {niveau:"danger",icon:"!",titre:"P-204 → Vrms dépassement zone D",meta:"9.8 mm/s · seuil 7.0 · BPFI détecté · ENVELOPPE",time:"12 min"},
+                    {niveau:"danger",icon:"!",titre:"C-118 → Désalignement aggravé",meta:"2×fr passe de 4.2 à 6.8 mm/s · axial",time:"1 h 24"},
+                    {niveau:"",icon:"*",titre:"R-077 → Cepstre : nouvelle bande lat.",meta:"Espacement = fr arbre intermédiaire · usure dent",time:"3 h 47"},
                     {niveau:"info",icon:"ⓘ",titre:"Capteur A-042 → batterie faible",meta:"12% · planifier remplacement sous 7j",time:"5 h 12"},
-                    {niveau:"",icon:"⚡",titre:"V-302 → Crest Factor : 6.8 → 8.4",meta:"Probable début défaut roulement BPFO",time:"7 h 03"},
-                    {niveau:"info",icon:"✓",titre:"Bon de travail #4187 fermé",meta:"M-019 — alignement laser complété · Vrms 4.9→1.8",time:"12 h 22"},
+                    {niveau:"",icon:"*",titre:"V-302 → Crest Factor : 6.8 → 8.4",meta:"Probable début défaut roulement BPFO",time:"7 h 03"},
+                    {niveau:"info",icon:"OK",titre:"Bon de travail #4187 fermé",meta:"M-019 — alignement laser complété · Vrms 4.9→1.8",time:"12 h 22"},
                     {niveau:"info",icon:"↻",titre:"Modèle ML recalibré",meta:"v4.2.1 · précision ▲ 87.2% · 23 défauts entrainés",time:"21 h 04"},
                   ].map((a,i) => (
                     <div className={`alert-row ${a.niveau}`} key={i}>

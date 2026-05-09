@@ -264,6 +264,12 @@
   font-size: 11px;
   color: rgba(255, 255, 255, 0.85);
   text-decoration: none;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
 }
 
 .al-help-link:hover { color: white; }

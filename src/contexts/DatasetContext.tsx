@@ -24,6 +24,7 @@ export interface DatasetMeta {
   n_cols: number | null;
   detected_type: string | null;
   status: 'uploaded' | 'processing' | 'processed' | 'error';
+  ingestion_mode: 'exploratory' | 'company';
   created_at: string;
   processed_at: string | null;
   error_message: string | null;
@@ -36,6 +37,25 @@ export interface DatasetFull extends DatasetMeta {
 export interface EDAFrame {
   frame_name: string;
   data_type: string;
+  quality_score?: number;
+  kpis?: Record<string, { value: number; unit: string; source_col: string }> | null;
+  rul_info?: {
+    rul_mean?: number;
+    rul_min?: number;
+    rul_max?: number;
+    rul_std?: number;
+    health_index_mean?: number;
+    health_index_min?: number;
+    degradation_rate?: number;
+    pct_critical?: number;
+    reliability_rt?: number;
+  } | null;
+  pipeline_trace?: {
+    steps: PipelineStep[];
+    transformation_log: string[];
+    column_order: string[];
+    units: Record<string, { original: string; unit: string }>;
+  };
   summary: {
     n_rows: number;
     n_cols: number;
@@ -64,11 +84,30 @@ export interface ColumnInfo {
   missing: number;
   missing_pct: number;
   unique: number;
+  // numeric stats
   mean?: number;
   std?: number;
   min?: number;
   max?: number;
+  q25?: number;
+  q75?: number;
+  n_outliers?: number;
+  outlier_pct?: number;
+  skewness?: number;
+  kurtosis?: number;
+  // categorical
   top_values?: Record<string, number>;
+}
+
+export interface PipelineStep {
+  step: number;
+  type: string;
+  rows_removed?: number;
+  columns_removed?: string[];
+  columns?: Record<string, any>;
+  n_robust?: number;
+  n_standard?: number;
+  [key: string]: any;
 }
 
 /* ─── Context ────────────────────────────────────────────── */

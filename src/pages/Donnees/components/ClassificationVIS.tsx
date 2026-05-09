@@ -2,13 +2,13 @@
 // Sous-page Classification VIS — Vibration Intelligent Surveillance
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   BarChart3,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Clock,
   Loader2,
   Wrench,
 } from 'lucide-react';
@@ -45,13 +45,14 @@ const VIS_COLORS: Record<string, string> = {
 };
 
 const VIS_REFERENCE = [
-  { classe: '🟢 NORMAL', zone: 'A ou B', tendance: 'Stable ou baisse', action: 'Surveillance périodique (6 semaines)' },
-  { classe: '🟡 ATTENTION', zone: 'B ou C', tendance: 'Hausse modérée', action: 'Surveillance renforcée (2 semaines)' },
-  { classe: '🟠 CRITIQUE', zone: 'C', tendance: 'Hausse forte', action: 'Planifier intervention sous 30 jours' },
-  { classe: '🔴 URGENCE', zone: 'D', tendance: 'Toute tendance', action: 'Arrêt machine — intervention immédiate' },
+  { classe: 'NORMAL', zone: 'A ou B', tendance: 'Stable ou baisse', action: 'Surveillance périodique (6 semaines)' },
+  { classe: 'ATTENTION', zone: 'B ou C', tendance: 'Hausse modérée', action: 'Surveillance renforcée (2 semaines)' },
+  { classe: 'CRITIQUE', zone: 'C', tendance: 'Hausse forte', action: 'Planifier intervention sous 30 jours' },
+  { classe: 'URGENCE', zone: 'D', tendance: 'Toute tendance', action: 'Arrêt machine — intervention immédiate' },
 ];
 
 const ClassificationVIS: React.FC = () => {
+  const navigate = useNavigate();
   const { datasets, selectedId, setSelectedId, loading: ctxLoading } = useDatasets();
   const { isCompatible, dataset: selectedDs } = useDatasetForPage('vis', selectedId);
   const [source, setSource] = useState<'db' | 'dataset'>('db');
@@ -105,7 +106,16 @@ const ClassificationVIS: React.FC = () => {
 
   if (ctxLoading) return <div className="vis-page"><div className="eda-loading"><Loader2 size={20} className="spin" /> Chargement...</div></div>;
   if (source === 'dataset' && !isCompatible) {
-    return <div className="vis-page"><IncompatibleDatasetMessage page="Classification VIS" datasetName={selectedDs?.name || 'inconnu'} analysisType="maintenance" /></div>;
+    return (
+      <div className="vis-page">
+        <IncompatibleDatasetMessage
+          page="Classification VIS"
+          datasetName={selectedDs?.name || 'inconnu'}
+          analysisType="maintenance"
+          datasetDetectedType={selectedDs?.detected_type}
+        />
+      </div>
+    );
   }
 
   return (
@@ -173,7 +183,7 @@ const ClassificationVIS: React.FC = () => {
                   <td>{m.recommandation}</td>
                   <td>
                     {(m.classe_vis === 'URGENCE' || m.classe_vis === 'CRITIQUE') ? (
-                      <button className="btn-pmc-action urgent" style={{ padding: '4px 10px', fontSize: '10px' }}>
+                      <button className="btn-pmc-action urgent" style={{ padding: '4px 10px', fontSize: '10px' }} onClick={() => navigate('/maintenance')}>
                         <Wrench size={10} /> Créer BT
                       </button>
                     ) : m.action}
@@ -203,10 +213,10 @@ const ClassificationVIS: React.FC = () => {
             </BarChart>
           </ResponsiveContainer>
           <div className="vis-stats-summary">
-            <div className="vis-stats-line">🟢 Normal : {stats.normal} ({machines.length > 0 ? Math.round(stats.normal / machines.length * 100) : 0}%)</div>
-            <div className="vis-stats-line">🟡 Attention : {stats.attention}</div>
-            <div className="vis-stats-line">🟠 Critique : {stats.critique}</div>
-            <div className="vis-stats-line">🔴 Urgence : {stats.urgence}</div>
+            <div className="vis-stats-line">Normal : {stats.normal} ({machines.length > 0 ? Math.round(stats.normal / machines.length * 100) : 0}%)</div>
+            <div className="vis-stats-line">Attention : {stats.attention}</div>
+            <div className="vis-stats-line">Critique : {stats.critique}</div>
+            <div className="vis-stats-line">Urgence : {stats.urgence}</div>
             <div className="vis-stats-phrase">
               {needsAction > 0 ? (
                 <><AlertTriangle size={14} color="#dc2626" /> {pctNeedsAction}% de votre parc nécessite une action dans les 30 prochains jours.</>

@@ -17,3 +17,8 @@ python-dotenv
 liac-arff
 zipfile36
 aiofiles
+chromadb
+sentence-transformers
+langchain
+langchain-community
+tqdm

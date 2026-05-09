@@ -1,0 +1,86 @@
+[
+  {
+    "id": "093168a92d25cc46_pdf_preview_medium",
+    "title": "BEARING DAMAGE",
+    "source": "093168a92d25cc46_pdf_preview_medium.pdf",
+    "theme": "roulements",
+    "n_pages": 104
+  },
+  {
+    "id": "19045-en-skf-cooper-split-roller-bearings-and-bearing-units",
+    "title": "SKF Cooper split roller",
+    "source": "19045 EN - SKF Cooper split roller bearings and bearing units.pdf",
+    "theme": "roulements",
+    "n_pages": 189
+  },
+  {
+    "id": "analyse-vibratoire",
+    "title": "Initiation à l ’analyse vibratoire.",
+    "source": "Analyse vibratoire.pdf",
+    "theme": "roulements",
+    "n_pages": 21
+  },
+  {
+    "id": "analyse-vibratoire-01db",
+    "title": "Analyse vibratoire des",
+    "source": "Analyse-Vibratoire-01dB.pdf",
+    "theme": "analyse-vibratoire",
+    "n_pages": 140
+  },
+  {
+    "id": "analyse-vibratoire",
+    "title": "Chapitre 24",
+    "source": "Analyse-Vibratoire.pdf",
+    "theme": "analyse-vibratoire",
+    "n_pages": 33
+  },
+  {
+    "id": "analyse-vibratoire2",
+    "title": "Analyse vibratoire",
+    "source": "Analyse-Vibratoire2.pdf",
+    "theme": "analyse-vibratoire",
+    "n_pages": 76
+  },
+  {
+    "id": "chap-9",
+    "title": "Technique N°9 : ANALYSE",
+    "source": "chap 9.pdf",
+    "theme": "roulements",
+    "n_pages": 15
+  },
+  {
+    "id": "connaissances-de-base-pour-analyse-vibratoire",
+    "title": "Radek Sglunda",
+    "source": "connaissances-de-base-pour-analyse-vibratoire.pdf",
+    "theme": "analyse-vibratoire",
+    "n_pages": 55
+  },
+  {
+    "id": "formulaire",
+    "title": "3 – Origine des Vibrations",
+    "source": "Formulaire.pdf",
+    "theme": "analyse-vibratoire",
+    "n_pages": 17
+  },
+  {
+    "id": "frequencies",
+    "title": "RPM - Revolutions Per Minute",
+    "source": "frequencies.pdf",
+    "theme": "roulements",
+    "n_pages": 61
+  },
+  {
+    "id": "organisation-de-maintenance-cours-prof",
+    "title": "BTS MS",
+    "source": "Organisation-de-Maintenance-Cours-Prof.pdf",
+    "theme": "normes-surveillance",
+    "n_pages": 162
+  },
+  {
+    "id": "uk_vibration_data",
+    "title": "Bearing frequency data are included in this catalogue for two",
+    "source": "UK_vibration_data.pdf",
+    "theme": "roulements",
+    "n_pages": 3
+  }
+]

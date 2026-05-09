@@ -6,12 +6,22 @@ import { useNavigate } from 'react-router-dom';
 import { AlertCircle, ChevronDown, Upload } from 'lucide-react';
 import { useDatasets, DatasetMeta } from '../../../contexts/DatasetContext';
 
+const TYPE_LABELS_FR: Record<string, string> = {
+  machine: 'Parc machines',
+  maintenance: 'Maintenance / classification VIS',
+  vibration: 'Analyse vibratoire',
+  kpi: 'KPI et performance',
+  generic: 'Générique',
+};
+
 export interface IncompatibleDatasetMessageProps {
   page: string; // nom de la page (ex: "Analyse Vibratoire", "Vue Générale")
   datasetName: string; // nom du dataset courant
   missingColumns?: string[]; // colonnes manquantes
   compatibleDatasetIds?: number[]; // IDs des datasets compatibles avec cette page
   analysisType?: string; // type requis (ex: 'vibration', 'kpi', 'maintenance')
+  /** Type détecté par l'EDA pour le dataset sélectionné (affichage explicite écart de typage) */
+  datasetDetectedType?: string | null;
 }
 
 const IncompatibleDatasetMessage: React.FC<IncompatibleDatasetMessageProps> = ({
@@ -20,6 +30,7 @@ const IncompatibleDatasetMessage: React.FC<IncompatibleDatasetMessageProps> = ({
   missingColumns = [],
   compatibleDatasetIds,
   analysisType,
+  datasetDetectedType,
 }) => {
   const navigate = useNavigate();
   const { datasets, setSelectedId } = useDatasets();
@@ -42,8 +53,35 @@ const IncompatibleDatasetMessage: React.FC<IncompatibleDatasetMessageProps> = ({
       </h2>
 
       <p className="incompatible-dataset-message">
-        Le dataset <strong>'{datasetName}'</strong> ne contient pas les colonnes
-        nécessaires pour l'analyse <strong>{page}</strong>.
+        {missingColumns.length > 0 ? (
+          <>
+            Le dataset <strong>&apos;{datasetName}&apos;</strong> ne contient pas les colonnes
+            attendues pour <strong>{page}</strong>.
+          </>
+        ) : analysisType && datasetDetectedType && datasetDetectedType !== analysisType ? (
+          <>
+            Le dataset <strong>&apos;{datasetName}&apos;</strong> est classé{' '}
+            <strong>{TYPE_LABELS_FR[datasetDetectedType] || datasetDetectedType}</strong> par
+            l&apos;analyse automatique (EDA). La vue <strong>{page}</strong> attend un fichier
+            classé{' '}
+            <strong>{TYPE_LABELS_FR[analysisType] || analysisType}</strong> — structure et
+            colonnes différentes (souvent un CSV dédié à cette vue).
+          </>
+        ) : (
+          <>
+            Le dataset <strong>&apos;{datasetName}&apos;</strong> n&apos;est pas adapté à{' '}
+            <strong>{page}</strong>
+            {analysisType ? (
+              <>
+                {' '}
+                (type attendu :{' '}
+                <strong>{TYPE_LABELS_FR[analysisType] || analysisType}</strong>).
+              </>
+            ) : (
+              <>.</>
+            )}
+          </>
+        )}
       </p>
 
       {missingColumns.length > 0 && (

@@ -22,9 +22,15 @@ const MACHINE_COLORS = ['#3b82f6','#f97316','#16a34a','#7c3aed','#dc2626','#0891
 const SEVERITY = { VERT: '#16a34a', JAUNE: '#eab308', ORANGE: '#f97316', ROUGE: '#dc2626' };
 
 const ISO_CLASSES = [
-  { key: 'I', nom: 'Classe I — < 15 kW', seuils: { A: 0.71, B: 1.8, C: 4.5 } },
-  { key: 'II', nom: 'Classe II — 15–75 kW', seuils: { A: 1.12, B: 2.8, C: 7.1 } },
-  { key: 'III', nom: 'Classe III — > 75 kW', seuils: { A: 2.3, B: 4.5, C: 7.1 } },
+  { key: 'I',   nom: 'Classe I — < 15 kW',           seuils: { A: 0.71, B: 1.8,  C: 4.5  } },
+  { key: 'II',  nom: 'Classe II — 15–75 kW',          seuils: { A: 1.12, B: 2.8,  C: 7.1  } },
+  { key: 'III', nom: 'Classe III — > 75 kW (rigide)', seuils: { A: 2.3,  B: 4.5,  C: 7.1  } },
+  { key: 'IV',  nom: 'Classe IV — > 75 kW (souple)',  seuils: { A: 2.8,  B: 7.1,  C: 11.2 } },
+];
+
+const ISO_CLASS_QUESTIONS = [
+  { q: 'Puissance de la machine ?', options: ['< 15 kW', '15–75 kW', '> 75 kW'] },
+  { q: 'Type de montage / fondation ?', options: ['Souple', 'Rigide'] },
 ];
 
 const DEFAUT_TYPES = [
@@ -36,6 +42,24 @@ const DEFAUT_TYPES = [
   { nom: 'USURE ENGRENAGE', freq: 'GMF = Z × F₀', solution: 'Inspection engrenages' },
   { nom: 'CAVITATION', freq: 'Harmoniques HF', solution: 'Vérifier NPSH' },
 ];
+
+// Mini-catalogue Rouldiag — inspiré de la base OneProd Rouldiag (40 000 références).
+// Sources : catalogues SKF, NSK, FAG. Valeurs typiques pour roulements à billes.
+type BearingSpec = { Nb: number; d: number; D: number; alpha: number; type: string };
+const BEARING_CATALOG: Record<string, BearingSpec> = {
+  '6205':  { Nb: 9,  d: 7.938,  D: 38.50, alpha: 0,  type: 'Bille à gorge profonde' },
+  '6206':  { Nb: 9,  d: 9.525,  D: 46.00, alpha: 0,  type: 'Bille à gorge profonde' },
+  '6207':  { Nb: 9,  d: 11.112, D: 54.00, alpha: 0,  type: 'Bille à gorge profonde' },
+  '6208':  { Nb: 9,  d: 12.700, D: 62.00, alpha: 0,  type: 'Bille à gorge profonde' },
+  '6305':  { Nb: 7,  d: 11.509, D: 46.00, alpha: 0,  type: 'Bille à gorge profonde' },
+  '6306':  { Nb: 8,  d: 11.112, D: 54.00, alpha: 0,  type: 'Bille à gorge profonde' },
+  '6308':  { Nb: 8,  d: 14.288, D: 65.00, alpha: 0,  type: 'Bille à gorge profonde' },
+  '6309':  { Nb: 8,  d: 17.463, D: 72.50, alpha: 0,  type: 'Bille à gorge profonde' },
+  '6310':  { Nb: 8,  d: 19.050, D: 80.00, alpha: 0,  type: 'Bille à gorge profonde' },
+  '22218': { Nb: 14, d: 22.000, D: 100.0, alpha: 10, type: 'Rouleaux sphériques' },
+  '22220': { Nb: 14, d: 24.000, D: 115.0, alpha: 10, type: 'Rouleaux sphériques' },
+  'NU308': { Nb: 11, d: 14.000, D: 67.50, alpha: 0,  type: 'Rouleaux cylindriques' },
+};
 
 const AnalyseVibratoire: React.FC = () => {
   const navigate = useNavigate();
@@ -49,6 +73,36 @@ const AnalyseVibratoire: React.FC = () => {
   const [classAnswers, setClassAnswers] = useState<Record<number, string>>({});
   const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
   const [ckFilter, setCkFilter] = useState<string[]>([]);
+  const [bearingInputs, setBearingInputs] = useState({ N: 1500, Nb: 9, d: 14, D: 77.5, alpha: 0 });
+  const [bearingRef, setBearingRef] = useState<string>('');
+
+  const applyBearingRef = (ref: string) => {
+    setBearingRef(ref);
+    const spec = BEARING_CATALOG[ref];
+    if (spec) {
+      setBearingInputs(prev => ({
+        ...prev,
+        Nb: spec.Nb,
+        d: spec.d,
+        D: spec.D,
+        alpha: spec.alpha,
+      }));
+    }
+  };
+
+  const bearingFreqs = useMemo(() => {
+    const { N, Nb, d, D, alpha } = bearingInputs;
+    if (!N || !Nb || !d || !D) return { fr: '—', BPFO: '—', BPFI: '—', BSF: '—', FTF: '—' };
+    const fr = N / 60;
+    const ratio = (d / D) * Math.cos((alpha * Math.PI) / 180);
+    return {
+      fr:   fr.toFixed(2),
+      BPFO: ((Nb / 2) * fr * (1 - ratio)).toFixed(2),
+      BPFI: ((Nb / 2) * fr * (1 + ratio)).toFixed(2),
+      BSF:  ((D / (2 * d)) * fr * (1 - ratio * ratio)).toFixed(2),
+      FTF:  ((fr / 2) * (1 - ratio)).toFixed(2),
+    };
+  }, [bearingInputs]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -99,6 +153,88 @@ const AnalyseVibratoire: React.FC = () => {
     return (ISO_CLASSES.find(c => c.key === cls) || ISO_CLASSES[2]).seuils;
   };
   const s = getSeuils(selectedMachine);
+
+  // ─── Grille de Détection de Défauts (inspirée OneProd XPR) ───
+  // Matrice machines × types de défauts. Chaque cellule = niveau d'alarme calculé.
+  type DefectLevel = 'OK' | 'SURVEILLANCE' | 'ALERTE' | 'DANGER' | 'NA';
+  const DEFECT_COLUMNS = [
+    { key: 'balourd',     label: 'Balourd',          short: '1× F₀' },
+    { key: 'desalign',    label: 'Désalignement',    short: '2× F₀' },
+    { key: 'bpfo',        label: 'Bague extérieure', short: 'BPFO'  },
+    { key: 'bpfi',        label: 'Bague intérieure', short: 'BPFI'  },
+    { key: 'bsf',         label: 'Défaut bille',     short: 'BSF'   },
+    { key: 'chocs',       label: 'Chocs',            short: 'Kurt'  },
+    { key: 'lubrif',      label: 'Lubrification',    short: 'CF'    },
+  ] as const;
+
+  const defectGrid = useMemo(() => {
+    return machines.map(mid => {
+      const r = lastByMachine[mid] || {};
+      const vrms = r.v_rms_mm_s ?? 0;
+      const f0   = r.f0_hz || ((r.vitesse_rotation_rpm || 1500) / 60);
+      const bpfo = r.bpfo_amplitude ?? 0;
+      const bpfi = r.bpfi_amplitude ?? 0;
+      const bsf  = r.bsf_amplitude ?? 0;
+      const kurt = r.kurtosis ?? 2.5;
+      const cf   = r.crest_factor ?? 2;
+      const cls  = r.iso_class || 'III';
+      const seuils = (ISO_CLASSES.find(c => c.key === cls) || ISO_CLASSES[2]).seuils;
+
+      // Logique de classification — voir Documentation → Détection automatique de défauts
+      const balourd: DefectLevel = vrms > seuils.C ? 'DANGER' : vrms > seuils.B ? 'ALERTE' : vrms > seuils.A ? 'SURVEILLANCE' : 'OK';
+      const desalign: DefectLevel = (vrms > seuils.B && cf > 4) ? 'ALERTE' : (vrms > seuils.A && cf > 3.5) ? 'SURVEILLANCE' : 'OK';
+      const bpfoLvl: DefectLevel = bpfo > 0.20 ? 'DANGER' : bpfo > 0.15 ? 'ALERTE' : bpfo > 0.10 ? 'SURVEILLANCE' : 'OK';
+      const bpfiLvl: DefectLevel = bpfi > 0.20 ? 'DANGER' : bpfi > 0.15 ? 'ALERTE' : bpfi > 0.10 ? 'SURVEILLANCE' : 'OK';
+      const bsfLvl: DefectLevel = bsf > 0.18 ? 'DANGER' : bsf > 0.12 ? 'ALERTE' : bsf > 0.08 ? 'SURVEILLANCE' : 'OK';
+      const chocs: DefectLevel = kurt > 10 ? 'DANGER' : kurt > 6 ? 'ALERTE' : kurt > 3 ? 'SURVEILLANCE' : 'OK';
+      const lubrif: DefectLevel = cf > 6 ? 'DANGER' : cf > 5 ? 'ALERTE' : cf > 3 ? 'SURVEILLANCE' : 'OK';
+
+      return {
+        machine: mid,
+        f0,
+        cells: { balourd, desalign, bpfo: bpfoLvl, bpfi: bpfiLvl, bsf: bsfLvl, chocs, lubrif },
+        // Avis global = pire des défauts
+        worst: [balourd, desalign, bpfoLvl, bpfiLvl, bsfLvl, chocs, lubrif].reduce((p, c) => {
+          const order = ['OK', 'SURVEILLANCE', 'ALERTE', 'DANGER'];
+          return order.indexOf(c) > order.indexOf(p) ? c : p;
+        }, 'OK' as DefectLevel),
+      };
+    });
+  }, [machines, lastByMachine]);
+
+  const defectColor = (lvl: DefectLevel): string => {
+    if (lvl === 'OK') return '#16a34a';
+    if (lvl === 'SURVEILLANCE') return '#eab308';
+    if (lvl === 'ALERTE') return '#f97316';
+    if (lvl === 'DANGER') return '#dc2626';
+    return '#9ca3af';
+  };
+  const defectGlyph = (lvl: DefectLevel): string => {
+    if (lvl === 'OK') return '●';
+    if (lvl === 'SURVEILLANCE') return '◐';
+    if (lvl === 'ALERTE') return '▲';
+    if (lvl === 'DANGER') return '■';
+    return '○';
+  };
+
+  // ─── Avis ISO synthétique global (norme ISO 10816 — Bon/Acceptable/Non admissible/Inacceptable) ───
+  const isoVerdictPerMachine = useMemo(() => {
+    const verdicts = machines.map(mid => {
+      const r = lastByMachine[mid] || {};
+      const vrms = r.v_rms_mm_s ?? 0;
+      const cls  = r.iso_class || 'III';
+      const seuils = (ISO_CLASSES.find(c => c.key === cls) || ISO_CLASSES[2]).seuils;
+      const zone = vrms < seuils.A ? 'A' : vrms < seuils.B ? 'B' : vrms < seuils.C ? 'C' : 'D';
+      const avis = zone === 'A' ? 'Bon'
+                 : zone === 'B' ? 'Acceptable'
+                 : zone === 'C' ? 'Non admissible long terme'
+                 : 'Inacceptable';
+      return { machine: mid, vrms, zone, avis, cls };
+    });
+    const counts = { A: 0, B: 0, C: 0, D: 0 };
+    verdicts.forEach(v => { counts[v.zone as keyof typeof counts]++; });
+    return { verdicts, counts };
+  }, [machines, lastByMachine]);
 
   // PROBLÈME 5 — Tableau roulements
   const bearingRows = useMemo(() => machines.map(mid => {
@@ -181,8 +317,9 @@ const AnalyseVibratoire: React.FC = () => {
 
   const detectClass = () => {
     const a = classAnswers[0]; const b = classAnswers[1];
-    if (a === '< 15 kW') setIsoClass('I'); else if (a === '15–75 kW') setIsoClass('II');
-    else if (a === '> 75 kW' && b === 'Souple') setIsoClass('II');
+    if (a === '< 15 kW') setIsoClass('I');
+    else if (a === '15–75 kW') setIsoClass('II');
+    else if (a === '> 75 kW' && b === 'Souple') setIsoClass('IV');
     else if (a === '> 75 kW' && b === 'Rigide') setIsoClass('III');
     setShowClassHelper(false);
   };
@@ -211,9 +348,98 @@ const AnalyseVibratoire: React.FC = () => {
       <div style={{ background: `${ZONE_COLORS[currentZone]}10`, border: `1px solid ${ZONE_COLORS[currentZone]}40`, borderRadius: '8px', padding: '10px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '13px' }}>
         <Gauge size={16} color={ZONE_COLORS[currentZone]} /><strong>{activeClass.nom}</strong>
         <span style={{ color: '#6b7280' }}>|</span>
-        <span>A &lt;{sGlobal.A} — B &lt;{sGlobal.B} — C &lt;{sGlobal.C} — D ≥{sGlobal.C} mm/s</span>        <span style={{ marginLeft: 'auto', color: ZONE_COLORS[currentZone], fontWeight: 700 }}>V-RMS: {vrmsVal} mm/s → Zone {currentZone}</span>
+        <span>A &lt;{sGlobal.A} — B &lt;{sGlobal.B} — C &lt;{sGlobal.C} — D ≥{sGlobal.C} mm/s</span>
         <span style={{ marginLeft: 'auto', color: ZONE_COLORS[currentZone], fontWeight: 700 }}>V-RMS: {vrmsVal} mm/s → Zone {currentZone}</span>
       </div>
+
+      {/* AVIS ISO SYNTHÉTIQUE — Inspiré du module Avis d'expert d'OneProd XPR */}
+      <Section icon={CheckCircle2} title="Avis ISO 10816 par machine">
+        <p style={{ fontSize: 11.5, color: '#6b7280', marginBottom: 12 }}>
+          Classification synthétique de chaque machine selon la norme ISO 10816 — équivalent du module
+          <em> Avis d'expert</em> d'OneProd XPR. Voir <em>Documentation → Norme ISO 10816 / 20816</em>.
+        </p>
+        <div className="iso-verdict-grid">
+          {isoVerdictPerMachine.verdicts.map(v => (
+            <div
+              key={v.machine}
+              className="iso-verdict-card"
+              style={{ borderLeftColor: ZONE_COLORS[v.zone] }}
+              onClick={() => setSelectedMachine(v.machine)}
+              title="Cliquer pour analyser cette machine"
+            >
+              <div className="iso-verdict-machine">{v.machine}</div>
+              <div className="iso-verdict-zone" style={{ background: `${ZONE_COLORS[v.zone]}18`, color: ZONE_COLORS[v.zone] }}>
+                Zone {v.zone}
+              </div>
+              <div className="iso-verdict-vrms">{v.vrms.toFixed(2)} mm/s · Cl. {v.cls}</div>
+              <div className="iso-verdict-avis" style={{ color: ZONE_COLORS[v.zone] }}>{v.avis}</div>
+            </div>
+          ))}
+        </div>
+        <div className="iso-verdict-summary">
+          <span style={{ color: ZONE_COLORS.A }}>● {isoVerdictPerMachine.counts.A} Bon</span>
+          <span style={{ color: ZONE_COLORS.B }}>● {isoVerdictPerMachine.counts.B} Acceptable</span>
+          <span style={{ color: ZONE_COLORS.C }}>● {isoVerdictPerMachine.counts.C} Non admissible</span>
+          <span style={{ color: ZONE_COLORS.D }}>● {isoVerdictPerMachine.counts.D} Inacceptable</span>
+        </div>
+      </Section>
+
+      {/* GRILLE DE DÉTECTION DE DÉFAUTS — Inspirée de la Defect Detection Grid d'OneProd XPR */}
+      <Section icon={AlertTriangle} title="Grille de détection de défauts">
+        <p style={{ fontSize: 11.5, color: '#6b7280', marginBottom: 12 }}>
+          Matrice machines × types de défauts — vue synoptique inspirée de la
+          <strong> Defect Detection Grid</strong> de OneProd XPR. Chaque cellule reflète l'état d'alarme calculé
+          à partir des seuils documentés.
+        </p>
+        <div className="defect-grid-wrap">
+          <table className="defect-grid">
+            <thead>
+              <tr>
+                <th>Machine</th>
+                <th>Avis</th>
+                {DEFECT_COLUMNS.map(c => (
+                  <th key={c.key} title={c.label}>
+                    <div className="defect-grid-th-label">{c.label}</div>
+                    <div className="defect-grid-th-short">{c.short}</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {defectGrid.map(row => (
+                <tr key={row.machine} onClick={() => setSelectedMachine(row.machine)} style={{ cursor: 'pointer' }}>
+                  <td className="defect-grid-machine">{row.machine}</td>
+                  <td>
+                    <span className="defect-grid-cell" style={{ background: defectColor(row.worst), color: '#fff' }}>
+                      {row.worst}
+                    </span>
+                  </td>
+                  {DEFECT_COLUMNS.map(c => {
+                    const lvl = (row.cells as any)[c.key] as DefectLevel;
+                    return (
+                      <td key={c.key} style={{ textAlign: 'center', padding: 4 }}>
+                        <span
+                          className="defect-grid-cell"
+                          style={{ background: `${defectColor(lvl)}25`, color: defectColor(lvl), border: `1px solid ${defectColor(lvl)}50` }}
+                          title={`${c.label} : ${lvl}`}
+                        >
+                          {defectGlyph(lvl)}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="defect-grid-legend">
+          <span><span className="defect-grid-cell" style={{ background: '#16a34a25', color: '#16a34a', border: '1px solid #16a34a50' }}>●</span> OK</span>
+          <span><span className="defect-grid-cell" style={{ background: '#eab30825', color: '#eab308', border: '1px solid #eab30850' }}>◐</span> Surveillance</span>
+          <span><span className="defect-grid-cell" style={{ background: '#f9731625', color: '#f97316', border: '1px solid #f9731650' }}>▲</span> Alerte</span>
+          <span><span className="defect-grid-cell" style={{ background: '#dc262625', color: '#dc2626', border: '1px solid #dc262650' }}>■</span> Danger</span>
+        </div>
+      </Section>
 
       {/* SECTION 1: KPIs */}
       <Section icon={Gauge} title="Tableau de bord vibratoire">
@@ -319,18 +545,82 @@ const AnalyseVibratoire: React.FC = () => {
         {fullDefauts.length === 0 && <p style={{ color: '#16a34a', padding: '20px', textAlign: 'center' }}><CheckCircle2 size={16} style={{ verticalAlign: 'middle' }} /> Aucun défaut détecté — parc en état nominal.</p>}
       </Section>
 
+      {/* CALCULATEUR FRÉQUENCES ROULEMENT */}
+      <Section icon={Wrench} title="Calculateur fréquences de défaut roulement (ISO 18436-3) — mini-Rouldiag">
+        <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '14px' }}>
+          Choisissez une référence dans le mini-catalogue (inspiré de Rouldiag — OneProd) pour pré-remplir
+          les paramètres géométriques, ou saisissez-les manuellement.
+        </p>
+        {/* Sélecteur de catalogue */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>Catalogue Rouldiag :</span>
+          <select
+            className="source-dataset-select"
+            value={bearingRef}
+            onChange={e => applyBearingRef(e.target.value)}
+            style={{ width: 'auto', minWidth: 200 }}
+          >
+            <option value="">-- Choisir une référence --</option>
+            {Object.entries(BEARING_CATALOG).map(([ref, spec]) => (
+              <option key={ref} value={ref}>
+                {ref} — {spec.type} (Nb={spec.Nb}, d={spec.d}mm, D={spec.D}mm)
+              </option>
+            ))}
+          </select>
+          {bearingRef && (
+            <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>
+              Paramètres appliqués : {bearingRef}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+          {([
+            { label: 'Vitesse N (rpm)',        key: 'N',     min: 100,  max: 20000, step: 10  },
+            { label: 'Nb billes / rouleaux',   key: 'Nb',    min: 4,    max: 50,    step: 1   },
+            { label: 'Diamètre bille d (mm)',  key: 'd',     min: 1,    max: 100,   step: 0.1 },
+            { label: 'Diamètre primitif D (mm)',key: 'D',    min: 10,   max: 500,   step: 0.5 },
+            { label: 'Angle contact α (°)',    key: 'alpha', min: 0,    max: 45,    step: 0.5 },
+          ] as const).map(({ label, key, min, max, step }) => (
+            <div key={key}>
+              <label style={{ fontSize: '11px', color: '#6b7280', display: 'block', marginBottom: '4px' }}>{label}</label>
+              <input
+                type="number" min={min} max={max} step={step}
+                value={bearingInputs[key]}
+                onChange={e => setBearingInputs(prev => ({ ...prev, [key]: parseFloat(e.target.value) || 0 }))}
+                style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', boxSizing: 'border-box' }}
+              />
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(135px, 1fr))', gap: '10px' }}>
+          {([
+            { label: 'F₀ — rotation',     key: 'fr',   formula: 'N / 60',                        color: '#3b82f6' },
+            { label: 'BPFO — bague ext.', key: 'BPFO', formula: '(Nb/2)·F₀·(1 − d/D·cosα)',     color: '#f97316' },
+            { label: 'BPFI — bague int.', key: 'BPFI', formula: '(Nb/2)·F₀·(1 + d/D·cosα)',     color: '#dc2626' },
+            { label: 'BSF — bille',       key: 'BSF',  formula: 'D/(2d)·F₀·(1 − (d/D·cosα)²)', color: '#7c3aed' },
+            { label: 'FTF — cage',        key: 'FTF',  formula: '(F₀/2)·(1 − d/D·cosα)',        color: '#0891b2' },
+          ] as const).map(({ label, key, formula, color }) => (
+            <div key={key} style={{ background: '#f9fafb', border: `1px solid ${color}30`, borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
+              <div style={{ fontSize: '22px', fontWeight: 700, color, fontFamily: 'monospace' }}>{bearingFreqs[key]} Hz</div>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: '#374151', marginTop: '4px' }}>{label}</div>
+              <div style={{ fontSize: '9px', color: '#9ca3af', marginTop: '2px', fontFamily: 'monospace' }}>{formula}</div>
+            </div>
+          ))}
+        </div>
+      </Section>
+
       {/* Pédagogique */}
       <Section>
-        <button className="baignoire-toggle" onClick={() => setShowPedago(v => !v)}><span><BookOpen size={14} style={{ marginRight: '8px' }} />📚 Comprendre l'analyse vibratoire — ISO 10816 / ISO 20816</span>{showPedago ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
+        <button className="baignoire-toggle" onClick={() => setShowPedago(v => !v)}><span><BookOpen size={14} style={{ marginRight: '8px' }} />Comprendre l'analyse vibratoire — ISO 10816 / ISO 20816</span>{showPedago ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
         {showPedago && (<div className="baignoire-content">
           <h4>Pourquoi surveiller les vibrations ?</h4><p className="baignoire-text">Les machines tournantes produisent des vibrations dont le niveau et le spectre reflètent leur état de santé.</p>
           <h4 style={{ marginTop: '12px' }}>Paramètres</h4><table className="vis-reference-table"><thead><tr><th>Paramètre</th><th>Unité</th><th>Plage</th><th>Défauts</th></tr></thead><tbody><tr><td><Waves size={14} /> Déplacement</td><td>μm</td><td>0–200 Hz</td><td>Balourd</td></tr><tr><td><Activity size={14} /> Vitesse</td><td>mm/s</td><td>10–1000 Hz</td><td>ISO 10816</td></tr><tr><td><Zap size={14} /> Accélération</td><td>g</td><td>500–20k Hz</td><td>Roulements</td></tr></tbody></table>
-          <h4 style={{ marginTop: '12px' }}>Lecture</h4><p className="baignoire-text">🟢 A = excellent • 🟡 B = acceptable • 🟠 C = planifier • 🔴 D = arrêt</p>
+          <h4 style={{ marginTop: '12px' }}>Lecture</h4><p className="baignoire-text">A = excellent • B = acceptable • C = planifier • D = arrêt</p>
         </div>)}
       </Section>
 
       {/* MODALES */}
-      {showClassHelper && <Modal onClose={() => setShowClassHelper(false)}><h3><HelpCircle size={18} /> Déterminer la classe ISO</h3><p style={{fontSize:'13px',color:'#6b7280',marginBottom:'12px'}}>Puissance et type de socle ?</p>{ISO_CLASSES[0].questions.map((q,qi)=><div key={qi} style={{marginBottom:'10px'}}><p style={{fontWeight:600,fontSize:'13px',marginBottom:'4px'}}>{q.q}</p><div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>{q.options.map(o=><button key={o} className={`period-btn${classAnswers[qi]===o?' active':''}`} onClick={()=>setClassAnswers(a=>({...a,[qi]:o}))}>{o}</button>)}</div></div>)}<button className="btn-upload-primary" onClick={detectClass} style={{marginTop:'8px'}}>Déterminer</button><div style={{marginTop:'12px',fontSize:'11px'}}>{ISO_CLASSES.map(c=><div key={c.key} style={{padding:'4px 0'}}><strong>{c.nom.split(' —')[0]}</strong> — A&lt;{c.seuils.A} B&lt;{c.seuils.B} C&lt;{c.seuils.C}</div>)}</div></Modal>}
+      {showClassHelper && <Modal onClose={() => setShowClassHelper(false)}><h3><HelpCircle size={18} /> Déterminer la classe ISO 10816</h3><p style={{fontSize:'13px',color:'#6b7280',marginBottom:'12px'}}>Répondez aux questions pour identifier la classe de votre machine.</p>{ISO_CLASS_QUESTIONS.map((q,qi)=><div key={qi} style={{marginBottom:'10px'}}><p style={{fontWeight:600,fontSize:'13px',marginBottom:'4px'}}>{q.q}</p><div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>{q.options.map(o=><button key={o} className={`period-btn${classAnswers[qi]===o?' active':''}`} onClick={()=>setClassAnswers(a=>({...a,[qi]:o}))}>{o}</button>)}</div></div>)}<button className="btn-upload-primary" onClick={detectClass} style={{marginTop:'8px'}}>Déterminer la classe</button><div style={{marginTop:'16px',fontSize:'11px',borderTop:'1px solid #e5e7eb',paddingTop:'12px'}}><strong style={{display:'block',marginBottom:'6px',fontSize:'12px'}}>Seuils ISO 10816 (mm/s V-RMS) :</strong>{ISO_CLASSES.map(c=><div key={c.key} style={{padding:'3px 0',display:'flex',gap:'8px'}}><strong style={{minWidth:'70px'}}>{c.nom.split(' —')[0]}</strong><span style={{color:'#6b7280'}}>A&lt;{c.seuils.A} · B&lt;{c.seuils.B} · C&lt;{c.seuils.C} · D≥{c.seuils.C}</span></div>)}</div></Modal>}
     </Wrap>
   );
 };

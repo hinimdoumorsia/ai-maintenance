@@ -10,7 +10,9 @@ import {
   ChevronRight,
   Download,
   FileText,
+  Lightbulb,
   Loader2,
+  Shield,
   Table2,
   TrendingUp,
   Zap,
@@ -105,7 +107,7 @@ const VueGenerale: React.FC = () => {
           </p>
           <button
             className="btn-incompatible-navigate"
-            onClick={() => navigate('/donnees?analyse=chargement')}
+            onClick={() => navigate('/donnees?tab=chargement')}
           >
             Aller au Chargement
           </button>
@@ -204,7 +206,17 @@ const VueGenerale: React.FC = () => {
     );
   }
 
-  const { summary, llm_result, plots, encoding_maps } = frame;
+  const { summary, llm_result, plots, encoding_maps, quality_score, pipeline_trace } = frame;
+
+  // Helpers score qualité
+  const qualityColor = (s?: number) => s == null ? '#6b7280' : s >= 85 ? '#16a34a' : s >= 70 ? '#65a30d' : s >= 50 ? '#f97316' : '#dc2626';
+  const qualityLabel = (s?: number) => s == null ? '—' : s >= 85 ? 'Excellent' : s >= 70 ? 'Bon' : s >= 50 ? 'Acceptable' : 'Insuffisant';
+
+  // Extraction des recommandations urgentes : 3 premières lignes/puces
+  const urgentRecos = (llm_result.feature_recommendations || llm_result.preprocessing_plan || '')
+    .split(/\n+/)
+    .filter(line => line.trim().length > 20)
+    .slice(0, 3);
 
   /* ─── RENDU PRINCIPAL ─── */
   return (
@@ -239,8 +251,47 @@ const VueGenerale: React.FC = () => {
                 <div className="eda-stat-lbl">{s.label}</div>
               </div>
             ))}
+            {quality_score != null && (
+              <div className="eda-stat eda-quality-stat">
+                <div className="eda-quality-ring" style={{ '--qcolor': qualityColor(quality_score) } as React.CSSProperties}>
+                  <span className="eda-quality-num" style={{ color: qualityColor(quality_score) }}>{quality_score}</span>
+                  <span className="eda-quality-slash">/100</span>
+                </div>
+                <div className="eda-stat-lbl">
+                  <Shield size={9} style={{ verticalAlign: 'middle', marginRight: 2 }} />
+                  Qualité&nbsp;
+                  <em style={{ color: qualityColor(quality_score), fontStyle: 'normal', fontWeight: 600 }}>
+                    {qualityLabel(quality_score)}
+                  </em>
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Bannière recommandations IA prioritaires */}
+        {urgentRecos.length > 0 && (
+          <div className="vg-reco-banner">
+            <div className="vg-reco-banner-header">
+              <Lightbulb size={16} color="#f97316" />
+              <strong>Recommandations IA prioritaires</strong>
+              <button
+                className="vg-reco-link"
+                onClick={() => setEdaTab('features')}
+              >
+                Voir toutes les recommandations <ChevronRight size={12} />
+              </button>
+            </div>
+            <ul className="vg-reco-list">
+              {urgentRecos.map((line, i) => (
+                <li key={i}>
+                  <span className="vg-reco-bullet" />
+                  <span>{line.trim().replace(/^[-•*]\s*/, '')}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="eda-tabs">
@@ -286,6 +337,8 @@ const VueGenerale: React.FC = () => {
                         <th>Manquants</th>
                         <th>Uniques</th>
                         <th>Statistiques</th>
+                        <th title="Outliers détectés par la méthode IQR (1.5×IQR)">Outliers IQR</th>
+                        <th title="Asymétrie de la distribution">Skewness</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -308,20 +361,64 @@ const VueGenerale: React.FC = () => {
                             <td>{col.unique}</td>
                             <td className="col-stats">
                               {col.type === 'numeric'
-                                ? `min ${col.min} · moy ${col.mean} · max ${col.max}`
+                                ? <>min {col.min} · moy {col.mean} · max {col.max}</>
                                 : Object.keys(col.top_values || {}).slice(0, 3).join(', ')
+                              }
+                            </td>
+                            <td>
+                              {col.type === 'numeric' && col.n_outliers != null
+                                ? <span className={col.outlier_pct! > 10 ? 'text-warn' : col.outlier_pct! > 5 ? 'text-caution' : 'text-ok'}>
+                                    {col.n_outliers} ({col.outlier_pct}%)
+                                  </span>
+                                : <span style={{ color: '#9ca3af' }}>—</span>
+                              }
+                            </td>
+                            <td>
+                              {col.type === 'numeric' && col.skewness != null
+                                ? <span
+                                    className={Math.abs(col.skewness) > 2 ? 'text-warn' : Math.abs(col.skewness) > 1 ? 'text-caution' : 'text-ok'}
+                                    title={`Kurtosis : ${col.kurtosis}`}
+                                  >
+                                    {col.skewness > 0 ? '+' : ''}{col.skewness}
+                                  </span>
+                                : <span style={{ color: '#9ca3af' }}>—</span>
                               }
                             </td>
                           </tr>
                           {expandedCol === col.name && col.type === 'categorical' && col.top_values && (
                             <tr className="col-expanded">
-                              <td colSpan={6}>
+                              <td colSpan={8}>
                                 <div className="col-top-values">
                                   {Object.entries(col.top_values).map(([k, v]) => (
                                     <span key={k} className="col-val-chip">
                                       {k} <em>{v}</em>
                                     </span>
                                   ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          {expandedCol === col.name && col.type === 'numeric' && (
+                            <tr className="col-expanded">
+                              <td colSpan={8}>
+                                <div className="col-numeric-detail">
+                                  {col.skewness != null && (
+                                    <span className="col-detail-chip">
+                                      Skewness&nbsp;<strong>{col.skewness > 0 ? '+' : ''}{col.skewness}</strong>
+                                      &nbsp;({Math.abs(col.skewness) > 2 ? 'Très asymétrique' : Math.abs(col.skewness) > 1 ? 'Asymétrique' : 'Symétrique'})
+                                    </span>
+                                  )}
+                                  {col.kurtosis != null && (
+                                    <span className="col-detail-chip">
+                                      Kurtosis&nbsp;<strong>{col.kurtosis > 0 ? '+' : ''}{col.kurtosis}</strong>
+                                    </span>
+                                  )}
+                                  {col.n_outliers != null && col.n_outliers > 0 && (
+                                    <span className="col-detail-chip warn">
+                                      {col.n_outliers} outlier{col.n_outliers > 1 ? 's' : ''} IQR ({col.outlier_pct}%)
+                                      &nbsp;→ {col.outlier_pct! > 10 ? 'RobustScaler' : 'StandardScaler'}
+                                    </span>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -343,7 +440,7 @@ const VueGenerale: React.FC = () => {
                 <div className="lightbox-overlay" onClick={() => setLightboxImg(null)}>
                   <div className="lightbox-content" onClick={e => e.stopPropagation()}>
                     <img src={`data:image/png;base64,${lightboxImg}`} alt="Graphique" />
-                    <button className="lightbox-close" onClick={() => setLightboxImg(null)}>✕</button>
+                    <button className="lightbox-close" onClick={() => setLightboxImg(null)}>X</button>
                   </div>
                 </div>
               )}
@@ -368,8 +465,78 @@ const VueGenerale: React.FC = () => {
           {/* ═════ PRÉTRAITEMENT ═════ */}
           {edaTab === 'pretraitement' && (
             <div className="eda-pretraitement">
+              {/* Steps structurés */}
+              {pipeline_trace && pipeline_trace.steps.length > 0 && (
+                <div className="eda-block">
+                  <h4>Étapes de transformation ({pipeline_trace.steps.length})</h4>
+                  <div className="pipeline-steps">
+                    {pipeline_trace.steps.map((step, i) => {
+                      const STEP_META: Record<string, { label: string; color: string }> = {
+                        drop_duplicates:       { label: 'Suppression des doublons',        color: '#6b7280' },
+                        drop_constant_columns: { label: 'Élimination colonnes constantes', color: '#6b7280' },
+                        datetime_parsing:      { label: 'Parsing colonnes datetime',       color: '#0891b2' },
+                        missing_imputation:    { label: 'Imputation valeurs manquantes',   color: '#16a34a' },
+                        encoding:              { label: 'Encodage catégorielles',          color: '#7c3aed' },
+                        standardization:       { label: 'Normalisation / Scaling adaptatif', color: '#2563eb' },
+                      };
+                      const meta = STEP_META[step.type] || { label: step.type, color: '#6b7280' };
+                      const summary_text = (() => {
+                        switch (step.type) {
+                          case 'drop_duplicates':       return `${step.rows_removed ?? 0} lignes supprimées`;
+                          case 'drop_constant_columns': return `${(step.columns_removed ?? []).length} colonnes éliminées`;
+                          case 'datetime_parsing':      return `${(step.columns ?? []).length} colonne(s)`;
+                          case 'missing_imputation':    return `${Object.keys(step.columns ?? {}).length} colonne(s) imputées`;
+                          case 'encoding':              return `${Object.keys(step.columns ?? {}).length} colonne(s) encodées`;
+                          case 'standardization':       return `${step.n_standard ?? 0}×Standard + ${step.n_robust ?? 0}×Robust`;
+                          default: return '';
+                        }
+                      })();
+                      return (
+                        <div key={i} className="pipeline-step-card">
+                          <div className="pipeline-step-header" style={{ borderLeftColor: meta.color }}>
+                            <span className="pipeline-step-num">Étape {step.step}</span>
+                            <span className="pipeline-step-label">{meta.label}</span>
+                            <span className="pipeline-step-summary">{summary_text}</span>
+                          </div>
+                          {step.type === 'standardization' && step.columns && (
+                            <div className="pipeline-step-detail">
+                              <table className="pipeline-scaler-table">
+                                <thead><tr><th>Colonne</th><th>Scaler</th><th>Centre</th><th>Échelle</th><th>Outliers</th></tr></thead>
+                                <tbody>
+                                  {Object.entries(step.columns as Record<string, any>).slice(0, 12).map(([col, info]: [string, any]) => (
+                                    <tr key={col}>
+                                      <td>{col}</td>
+                                      <td><span className={`scaler-badge ${info.scaler === 'RobustScaler' ? 'robust' : 'standard'}`}>{info.scaler === 'RobustScaler' ? 'Robust' : 'Standard'}</span></td>
+                                      <td>{info.center}</td>
+                                      <td>{info.scale}</td>
+                                      <td className={info.outlier_pct > 10 ? 'text-warn' : 'text-ok'}>{info.outlier_pct}%</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Log textuel */}
+              {pipeline_trace && pipeline_trace.transformation_log.length > 0 && (
+                <div className="eda-block">
+                  <h4>Journal de transformation</h4>
+                  <div className="pipeline-log">
+                    {pipeline_trace.transformation_log.map((line, i) => (
+                      <div key={i} className={`pipeline-log-line${line.startsWith('  *') ? ' indent' : ''}`}>{line}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="eda-block">
-                <h4>Plan de prétraitement appliqué</h4>
+                <h4>Analyse IA du prétraitement</h4>
                 <pre className="eda-pre">{llm_result.preprocessing_plan}</pre>
               </div>
 
@@ -417,6 +584,7 @@ const VueGenerale: React.FC = () => {
                     target="_blank"
                     rel="noreferrer"
                     className="eda-dl-btn green"
+                    title="Dataset après nettoyage, imputation et normalisation"
                   >
                     <Download size={14} /> CSV propre
                   </a>
@@ -425,6 +593,7 @@ const VueGenerale: React.FC = () => {
                     target="_blank"
                     rel="noreferrer"
                     className="eda-dl-btn blue"
+                    title="Fichier uploadé tel quel, sans modification"
                   >
                     <Download size={14} /> Fichier original
                   </a>
@@ -433,6 +602,7 @@ const VueGenerale: React.FC = () => {
                     target="_blank"
                     rel="noreferrer"
                     className="eda-dl-btn orange"
+                    title="Rapport PDF complet : qualité, colonnes enrichies, pipeline, graphiques"
                   >
                     <FileText size={14} /> Rapport PDF
                   </a>
@@ -440,9 +610,19 @@ const VueGenerale: React.FC = () => {
                     href={`${API}/api/donnees/datasets/${dataset.id}/download/preprocessing-trace`}
                     target="_blank"
                     rel="noreferrer"
-                    className="eda-dl-btn blue"
+                    className="eda-dl-btn purple"
+                    title="Journal textuel détaillé des étapes de prétraitement"
                   >
                     <Download size={14} /> Trace prétraitement (.txt)
+                  </a>
+                  <a
+                    href={`${API}/api/donnees/datasets/${dataset.id}/download/eda-json`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="eda-dl-btn gray"
+                    title="Export JSON des résultats EDA complets (sans images)"
+                  >
+                    <Download size={14} /> Export JSON (data science)
                   </a>
                 </div>
               </div>

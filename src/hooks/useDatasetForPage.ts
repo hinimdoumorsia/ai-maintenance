@@ -7,6 +7,7 @@ import { useDatasets, DatasetMeta } from '../contexts/DatasetContext';
 export interface PageRequirements {
   page: string;
   analysisType?: string; // type détecté requis (ex: 'vibration', 'kpi', 'maintenance')
+  analysisTypes?: string[]; // types détectés autorisés (si plusieurs)
   requiredColumns?: string[]; // colonnes obligatoires
   minRows?: number;
   minCols?: number;
@@ -36,7 +37,7 @@ const PAGE_REQUIREMENTS: Record<string, PageRequirements> = {
   },
   capteurs: {
     page: 'Capteurs IoT',
-    analysisType: 'generic',
+    analysisTypes: ['generic', 'machine', 'vibration'],
   },
   vis: {
     page: 'Classification VIS',
@@ -73,7 +74,10 @@ export function useDatasetForPage(pageId: string, datasetId?: number | null) {
       // Pour l'instant, on se base uniquement sur le type détecté
     }
 
-    const typeMatches = !requirements.analysisType || dataset.detected_type === requirements.analysisType;
+    const typeMatches =
+      (requirements.analysisTypes && requirements.analysisTypes.length > 0)
+        ? requirements.analysisTypes.includes(dataset.detected_type || '')
+        : (!requirements.analysisType || dataset.detected_type === requirements.analysisType);
     const isCompatible = typeMatches && missingColumns.length === 0;
 
     return {
