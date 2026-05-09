@@ -1,9 +1,5 @@
-<<<<<<< HEAD
-import React, { useState } from "react";
-=======
 import React from "react";
 import { Activity } from "lucide-react";
->>>>>>> djeriV2
 import type { ToolPerformance, PerformanceBarPoint } from "../types";
 
 interface Props {
@@ -12,157 +8,58 @@ interface Props {
 }
 
 const PerformanceCard: React.FC<Props> = ({ tools, chartData }) => {
-<<<<<<< HEAD
-  const [collapsed, setCollapsed] = useState(false);
   const maxVal = Math.max(...chartData.flatMap((d) => [d.f1Score, d.recall]));
 
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #f3f4f6' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-          <div style={{ width: '40px', height: '40px', backgroundColor: 'rgba(249,115,22,0.1)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>
-            📶
+      <div className="flex items-center justify-between p-4 border-b border-gray-100">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-green-50 rounded-lg flex items-center justify-center text-green-600">
+            <Activity size={18} />
           </div>
           <div>
-            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#111827' }}>Performance des Outils</div>
-          </div>
-        </div>
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          style={{ padding: '6px', color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer', borderRadius: '8px' }}
-        >
-          {collapsed ? '▼' : '▲'}
-        </button>
-      </div>
-
-      {!collapsed && (
-        <div>
-          {/* Table Header */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 70px 80px', padding: '12px 20px', backgroundColor: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
-            {['Outils', 'Exécution', 'Timps', 'Success'].map((h, i) => (
-              <span key={h} style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280', textAlign: i > 0 ? 'center' : 'left' }}>{h}</span>
-            ))}
-          </div>
-
-          {/* Rows */}
-          {tools.map((tool) => (
-            <div key={tool.name} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 70px 80px', padding: '12px 20px', borderBottom: '1px solid #f3f4f6', alignItems: 'center' }}>
-              <span style={{ fontSize: '14px', fontWeight: 500, color: '#111827' }}>{tool.name}</span>
-              <span style={{ fontSize: '13px', color: '#6b7280', textAlign: 'center' }}>{tool.execution}</span>
-              <span style={{ fontSize: '13px', color: '#6b7280', textAlign: 'center' }}>{tool.temps}</span>
-              <span style={{ fontSize: '13px', color: '#16a34a', fontWeight: 600, textAlign: 'center' }}>{tool.success}</span>
-            </div>
-          ))}
-
-          {/* Chart */}
-          <div style={{ padding: '20px' }}>
-            {/* Legend */}
-            <div style={{ display: 'flex', gap: '24px', marginBottom: '16px' }}>
-              {[{ color: '#3b82f6', label: 'F1-Score' }, { color: '#a855f7', label: 'Recall' }].map(({ color, label }) => (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#6b7280' }}>
-                  <div style={{ width: '12px', height: '12px', borderRadius: '3px', backgroundColor: color }} />
-                  {label}
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {/* Y-axis */}
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '110px', paddingBottom: '24px', fontSize: '10px', color: '#9ca3af', paddingRight: '8px' }}>
-                {['1.0', '0.8', '0.6', '0.3', '0.0'].map((v) => <span key={v}>{v}</span>)}
-              </div>
-
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '110px' }}>
-                  {chartData.map((point, idx) => (
-                    <div key={point.label} style={{ flex: 1, display: 'flex', gap: '4px', alignItems: 'flex-end' }}>
-                      <div
-                        style={{
-                          flex: 1, backgroundColor: '#3b82f6', borderRadius: '3px 3px 0 0',
-                          height: `${(point.f1Score / maxVal) * 80}px`,
-                          transition: `height 0.5s ease ${idx * 0.05}s`
-                        }}
-                        title={`F1: ${point.f1Score}`}
-                      />
-                      <div
-                        style={{
-                          flex: 1, backgroundColor: '#a855f7', borderRadius: '3px 3px 0 0',
-                          height: `${(point.recall / maxVal) * 80}px`,
-                          transition: `height 0.5s ease ${idx * 0.05 + 0.1}s`
-                        }}
-                        title={`Recall: ${point.recall}`}
-                      />
-                    </div>
-                  ))}
-                </div>
-                {/* X-axis labels */}
-                <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: '8px' }}>
-                  {chartData.map((point) => (
-                    <div key={point.label} style={{ flex: 1, textAlign: 'center', fontSize: '10px', color: '#6b7280' }}>
-                      {point.label}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-=======
-  const maxVal = Math.max(...chartData.flatMap((d) => [d.f1Score, d.recall]));
-
-  return (
-    <div className="card perf-card">
-      {/* Header */}
-      <div className="card-header">
-        <div className="card-header-left">
-          <div className="card-icon" style={{ background: "rgba(16,185,129,.10)", display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}><Activity size={15} /></div>
-          <div>
-            <div className="card-title">Performance des Outils</div>
+            <div className="text-sm font-semibold text-gray-900">Performance des Outils</div>
           </div>
         </div>
       </div>
 
       {/* Table */}
-      <div className="perf-table">
-        <div className="perf-table-header">
+      <div>
+        <div className="grid grid-cols-[1fr,80px,70px,80px] bg-gray-50 px-5 py-2 border-b border-gray-100 text-[11px] font-bold text-gray-400">
           <span>Outils</span>
-          <span style={{ textAlign: "center" }}>Exécution</span>
-          <span style={{ textAlign: "center" }}>Timps</span>
-          <span style={{ textAlign: "center" }}>Success</span>
+          <span className="text-center">Exécution</span>
+          <span className="text-center">Temps</span>
+          <span className="text-center">Succès</span>
         </div>
+
         {tools.map((tool) => (
-          <div key={tool.name} className="perf-row">
-            <span className="perf-name">{tool.name}</span>
-            <span className="perf-val">{tool.execution}</span>
-            <span className="perf-val">{tool.temps}</span>
-            <span className="perf-success">{tool.success}</span>
+          <div key={tool.name} className="grid grid-cols-[1fr,80px,70px,80px] px-5 py-3 border-b border-gray-100 items-center">
+            <span className="text-sm font-medium text-gray-900">{tool.name}</span>
+            <span className="text-sm text-gray-500 text-center">{tool.execution}</span>
+            <span className="text-sm text-gray-500 text-center">{tool.temps}</span>
+            <span className="text-sm text-green-600 font-semibold text-center">{tool.success}</span>
           </div>
         ))}
       </div>
 
       {/* Chart */}
-      <div className="chart-wrap">
-        <div className="chart-legend">
-          <div className="legend-item">
-            <div className="legend-dot f1" />
+      <div className="p-5">
+        {/* Legend */}
+        <div className="flex gap-6 mb-4">
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <div className="w-3 h-3 rounded-sm bg-blue-500" />
             <span>F1-Score</span>
           </div>
-          <div className="legend-item">
-            <div className="legend-dot recall" />
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <div className="w-3 h-3 rounded-sm bg-purple-500" />
             <span>Recall</span>
           </div>
         </div>
 
-        {/* Y-axis labels + bars */}
-        <div style={{ display: "flex", gap: 6 }}>
-          {/* Y labels */}
-          <div style={{
-            display: "flex", flexDirection: "column", justifyContent: "space-between",
-            height: 110, paddingBottom: 24, fontSize: 10, color: "#9ca3af",
-            paddingRight: 4
-          }}>
+        <div className="flex gap-2">
+          {/* Y-axis */}
+          <div className="flex flex-col justify-between h-[110px] pb-6 text-[10px] text-gray-400 pr-2">
             <span>1.0</span>
             <span>0.8</span>
             <span>0.6</span>
@@ -170,38 +67,40 @@ const PerformanceCard: React.FC<Props> = ({ tools, chartData }) => {
             <span>0.0</span>
           </div>
 
-          <div style={{ flex: 1 }}>
-            <div className="chart-bars">
-              {chartData.map((point) => (
-                <div key={point.label} className="bar-group">
+          <div className="flex-1">
+            <div className="flex items-end gap-1.5 h-[110px]">
+              {chartData.map((point, idx) => (
+                <div key={point.label} className="flex-1 flex gap-1 items-end">
                   <div
-                    className="bar f1"
+                    className="flex-1 bg-blue-500 rounded-t transition-all duration-500"
                     style={{
                       height: `${(point.f1Score / maxVal) * 80}px`,
-                      animationDelay: `${point.label * 0.05}s`
+                      transitionDelay: `${idx * 0.05}s`
                     }}
                     title={`F1: ${point.f1Score}`}
                   />
                   <div
-                    className="bar recall"
+                    className="flex-1 bg-purple-500 rounded-t transition-all duration-500"
                     style={{
                       height: `${(point.recall / maxVal) * 80}px`,
-                      animationDelay: `${point.label * 0.05 + 0.1}s`
+                      transitionDelay: `${idx * 0.05 + 0.1}s`
                     }}
                     title={`Recall: ${point.recall}`}
                   />
                 </div>
               ))}
             </div>
-            <div className="chart-labels">
+            {/* X-axis labels */}
+            <div className="flex justify-around mt-2 text-[10px] text-gray-500">
               {chartData.map((point) => (
-                <div key={point.label} className="chart-label">{point.label}</div>
+                <div key={point.label} className="flex-1 text-center">
+                  {point.label}
+                </div>
               ))}
             </div>
           </div>
         </div>
       </div>
->>>>>>> djeriV2
     </div>
   );
 };

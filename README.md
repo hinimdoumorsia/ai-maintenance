@@ -65,8 +65,6 @@ EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2
 ```
 
 ---
-
->>>>>>> djeriV2
 ## Architecture
 
 ```
@@ -108,11 +106,7 @@ backend_data/                    # Backend Python FastAPI
 │   ├── admin.py                 # 9 routes (entreprise, machines, capteurs)
 │   └── maintenance.py           # 6 routes (planning, BTs, stocks)
 ├── agents/
-<<<<<<< HEAD
-│   ├── eda_agent.py             # Agent EDA 10 étapes + ingestion dashboard
-=======
 │   ├── eda_agent.py             # Agent EDA : outlier IQR, scaler adaptatif, score qualité, boxplots, PDF, ingestion dashboard
->>>>>>> djeriV2
 │   ├── file_parser.py           # Parser multi-format (CSV/XLSX/TXT/ARFF/ZIP)
 │   └── dataset_signatures.py    # Signatures types datasets + seuils ISO
 ├── db/
@@ -133,15 +127,9 @@ generate_datasets/               # Scripts de génération de données test
 | Page | Route | Composants | Description |
 |------|-------|-----------|-------------|
 | **Dashboard** | `/` | 5 composants | KPIs temps réel, machines à risque, alertes, fleur 9 piliers |
-<<<<<<< HEAD
-| **Données — Chargement** | `/donnees` | ChargementPage | Upload CSV/XLSX/TXT/ARFF/ZIP, drag-drop, liste datasets |
-| **Données — Vue Générale** | `/donnees` | VueGenerale | 5 onglets EDA : Synthèse, Graphiques, Prétraitement, Recommandations, Aperçu |
-| **Données — Analyse Vibratoire** | `/donnees` | AnalyseVibratoire | ISO 10816/20816, spectre FFT simulé, Crest/Kurtosis, roulements, défauts |
-=======
 | **Données — Chargement** | `/donnees` | ChargementPage | Upload CSV/XLSX/TXT/ARFF/ZIP, drag-drop, EDA complet : score qualité, outliers IQR, scaler adaptatif, pipeline cards, boxplots |
 | **Données — Vue Générale** | `/donnees` | VueGenerale | 5 onglets EDA : Synthèse, Graphiques, Prétraitement (pipeline structuré + log), Recommandations, Aperçu |
 | **Données — Analyse Vibratoire** | `/donnees` | AnalyseVibratoire | ISO 10816/20816 (classes I–IV), spectre FFT simulé, Crest/Kurtosis, grille défauts, calculateur fréquences roulements (ISO 18436-3) |
->>>>>>> djeriV2
 | **Données — Pronostic & DRBF** | `/donnees` | PronosticPage | RUL, courbe dégradation, baignoire, distribution RUL |
 | **Données — KPIs & Performance** | `/donnees` | KPIsPage | 6 KPI, évolution temporelle, Pareto, radar ateliers, ratios NF |
 | **Données — Parc Machines** | `/donnees` | DonneesParc | Tableau filtrable, expansion par machine (capteurs, défauts) |
@@ -163,20 +151,6 @@ L'agent exécute automatiquement à chaque upload :
 
 | Étape | Action |
 |-------|--------|
-<<<<<<< HEAD
-| 0 | Détection unités (mm/s, °C, bar, A, %, €) |
-| 1 | Suppression doublons |
-| 2 | Drop colonnes constantes/vides |
-| 3 | Parsing datetime + feature engineering |
-| 4 | Imputation intelligente (médiane + flag binaire si >5% manquants) |
-| 5 | Encodage automatique : one-hot ≤10 cat, label 10-25, frequency >25 |
-| 6 | StandardScaler (z-score) |
-| 7 | Conversion booléens → int, drop texte résiduel |
-| 📄 | Génération rapport PDF + pipeline trace (.txt + .json) |
-| 📊 | Génération graphiques PNG (distributions, corrélation, séries temporelles, vibratoires) |
-| 🤖 | Narration IA (Claude) — analyse, recommandations, plan prétraitement |
-| 📥 | Ingestion automatique dashboard (mesures, KPIs, défauts → BD SQLite) |
-=======
 | 0 | Détection unités dans les noms de colonnes (mm/s, °C, bar, A, %, €, rpm, Hz…) |
 | 1 | Suppression doublons |
 | 2 | Drop colonnes constantes/vides |
@@ -191,8 +165,6 @@ L'agent exécute automatiquement à chaque upload :
 | 📝 | Pipeline trace : `.json` (structuré) + `.txt` (lisible) + export JSON EDA téléchargeable |
 | 🤖 | **Narration IA (Claude)** — prompting expert contextualisé par type de données, citations normes ISO, analyse outliers/skewness, recommandations features en 3 blocs |
 | 📥 | Ingestion automatique dashboard (mesures V-RMS, KPIs journaliers, défauts → BD SQLite) |
-
----
 
 ## Prompting IA expert — Contexte par type de données
 
@@ -211,7 +183,6 @@ Le prompt injecte également :
 - Le **résumé du choix de scaler** colonne par colonne (RobustScaler vs StandardScaler + taux d'outliers)
 - Les **colonnes très asymétriques** (|skewness| > 2) signalées pour log-transform
 - Une structure narrative **obligatoire** en 5 points + recommandations features en 3 blocs (critiques / dérivées / à exclure)
->>>>>>> djeriV2
 
 ---
 
@@ -271,11 +242,7 @@ Le dashboard s'alimente automatiquement :
 |---------|-------------|
 | Frontend | React 19, Vite 8, TypeScript/JSX, Recharts 3, Tailwind CSS 3, Lucide React |
 | Backend | Python 3.12, FastAPI, SQLite, Pandas, Matplotlib, Seaborn, Scikit-learn, FPDF2 |
-<<<<<<< HEAD
-| IA / LLM | Claude (Anthropic) — narration EDA + recommandations features |
-=======
 | IA / LLM | Claude Sonnet (Anthropic) — prompting expert contextualisé par type (vibration/KPI/maintenance/machine), citations normes ISO, narration EDA + recommandations features en 3 blocs |
->>>>>>> djeriV2
 | Parsing | Chardet, openpyxl, liac-arff, zipfile36 |
 | Build | Vite, ESLint, PostCSS |
 
