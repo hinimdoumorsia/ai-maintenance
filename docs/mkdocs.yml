@@ -1,0 +1,71 @@
+site_name: AI Maintenance - Documentation
+site_description: Système de Maintenance Prédictive Industrielle avec Intelligence Artificielle
+site_author: Équipe ENSAM Meknès
+copyright: © 2026 École Nationale Supérieure d'Arts et Métiers Meknès
+
+# Configuration du thème
+theme:
+  name: material
+  language: fr
+  palette:
+    primary: blue
+    accent: orange
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+
+# Extensions Markdown
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+
+# Plugins
+plugins:
+  - search:
+      separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - minify:
+      minify_html: true
+
+# Structure de navigation
+nav:
+  - Accueil: index.md
+  - Architecture:
+      - Frontend: index.md#architecture-frontend
+      - Backend: index.md#architecture-backend
+  - Pages de l'Application:
+      - Dashboard: dashboard.md
+      - Données: donnees.md
+      - Entraînement: training.md
+      - Prédictions: predictions.md
+      - Modèles: models.md
+      - Agents: agents.md
+      - Maintenance: maintenance.md
+      - Outils: outils.md
+      - Paramètres: parametres.md
+      - Authentification: auth.md
+      - Aide & Documentation: aidedocumentation.md
+  - Équipe & Projet:
+      - Contributeurs: index.md#contributeurs
+      - État d'Avancement: index.md#état-davancement-mai-2026
