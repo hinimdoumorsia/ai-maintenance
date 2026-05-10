@@ -1,16 +1,28 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
-      colors: {
-        'ai-blue': '#1E40AF',
-        'ai-orange': '#F97316',
+      keyframes: {
+        fadeIn: {
+          "0%":   { opacity: "0", transform: "translateY(8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        slideDown: {
+          "0%":   { opacity: "0", maxHeight: "0px" },
+          "100%": { opacity: "1", maxHeight: "600px" },
+        },
+        shimmer: {
+          "0%":   { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
+      },
+      animation: {
+        fadeIn:    "fadeIn 0.35s ease both",
+        slideDown: "slideDown 0.3s ease both",
+        shimmer:   "shimmer 2s infinite linear",
       },
     },
   },
   plugins: [],
-}
+};
