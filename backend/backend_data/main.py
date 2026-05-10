@@ -21,13 +21,16 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS — permet au frontend Vite (port 5173) d'appeler l'API
+# CORS — dev : toutes origines + Private Network Access (Chrome → 127.0.0.1:8000).
+# Pas de cookies sur les fetch du front (session en localStorage) → allow_credentials=False + « * » est valide.
+# En production : liste d’origines explicites + allow_credentials si besoin.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_private_network=True,
 )
 
 # Initialisation BD au démarrage

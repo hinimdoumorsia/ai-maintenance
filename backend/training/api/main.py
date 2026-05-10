@@ -30,20 +30,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from agent.training_agent import TrainingAgent
 
+_TRAINING_ROOT = Path(__file__).resolve().parent.parent
+_LOG_DIR = _TRAINING_ROOT / "logs"
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+
 # ─── Config ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level   = logging.INFO,
     format  = "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     handlers= [
         logging.StreamHandler(),
-        logging.FileHandler("logs/api.log"),
+        logging.FileHandler(str(_LOG_DIR / "api.log")),
     ]
 )
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR = _TRAINING_ROOT / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
-Path("logs").mkdir(exist_ok=True)
 
 # ─── Store en mémoire (jobs) ──────────────────────────────────────────────────
 jobs: dict[str, dict] = {}      # job_id → {status, logs, result, queue}

@@ -1,0 +1,30 @@
+# Dépendances communes — API maintenance (backend_data) + API training
+# Installation : cd backend && pip install -r requirements.txt
+
+aiofiles
+anthropic
+catboost
+chardet
+chromadb
+fastapi
+fpdf2
+groq
+langchain
+langchain-community
+liac-arff
+matplotlib
+mlflow
+numpy
+openpyxl
+pandas
+python-dotenv
+python-multipart
+scikit-learn
+scipy
+seaborn
+sentence-transformers
+sqlalchemy
+tqdm
+uvicorn[standard]
+xgboost
+zipfile36
