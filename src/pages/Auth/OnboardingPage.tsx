@@ -1,9 +1,9 @@
 // src/pages/Auth/OnboardingPage.tsx
 // Wizard d'onboarding — configuration entreprise + machines après inscription
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Cpu, ChevronLeft, ChevronRight, Check, Plus, X, Upload } from 'lucide-react';
+import { Cpu, ChevronLeft, ChevronRight, Check, Plus, X, Upload, FileCheck } from 'lucide-react';
 import './auth.css';
 
 const API = 'http://localhost:8000';
@@ -55,6 +55,12 @@ const OnboardingPage: React.FC = () => {
   const { user, completeOnboarding } = useAuth();
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
+
+  // File uploads
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
+  const docRef = useRef<HTMLInputElement>(null);
 
   // Step 1 — Entreprise
   const [entreprise, setEntreprise] = useState({
@@ -208,12 +214,17 @@ const OnboardingPage: React.FC = () => {
                 </div>
                 <div className="onb-field full">
                   <label>Logo de l'entreprise</label>
-                  <div className="onb-upload">
-                    <div className="onb-upload-icon"><Upload size={20} /></div>
+                  <div className={`onb-upload ${logoFile ? 'has-file' : ''}`} onClick={() => logoRef.current?.click()}>
+                    <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/svg+xml" style={{display:'none'}} onChange={e => { if(e.target.files?.[0]) setLogoFile(e.target.files[0]); }} />
+                    <div className="onb-upload-icon">{logoFile ? <FileCheck size={20} /> : <Upload size={20} />}</div>
                     <div className="onb-upload-text">
-                      <strong>Cliquer pour uploader</strong> ou glisser-déposer<br />
-                      PNG, JPG, SVG (max 2 MB)
+                      {logoFile ? (
+                        <><strong>{logoFile.name}</strong> ({(logoFile.size / 1024).toFixed(0)} KB)</>
+                      ) : (
+                        <><strong>Cliquer pour uploader</strong> ou glisser-déposer<br />PNG, JPG, SVG (max 2 MB)</>
+                      )}
                     </div>
+                    {logoFile && <div className="onb-upload-filename"><FileCheck size={14} /> Fichier sélectionné</div>}
                   </div>
                 </div>
               </div>
@@ -244,12 +255,17 @@ const OnboardingPage: React.FC = () => {
                 </div>
                 <div className="onb-field full">
                   <label>Document descriptif (fiche technique usine)</label>
-                  <div className="onb-upload">
-                    <div className="onb-upload-icon"><Upload size={20} /></div>
+                  <div className={`onb-upload ${docFile ? 'has-file' : ''}`} onClick={() => docRef.current?.click()}>
+                    <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.txt" style={{display:'none'}} onChange={e => { if(e.target.files?.[0]) setDocFile(e.target.files[0]); }} />
+                    <div className="onb-upload-icon">{docFile ? <FileCheck size={20} /> : <Upload size={20} />}</div>
                     <div className="onb-upload-text">
-                      <strong>Uploader un document</strong> décrivant l'usine<br />
-                      PDF, DOCX, TXT (max 10 MB)
+                      {docFile ? (
+                        <><strong>{docFile.name}</strong> ({(docFile.size / 1024).toFixed(0)} KB)</>
+                      ) : (
+                        <><strong>Uploader un document</strong> décrivant l'usine<br />PDF, DOCX, TXT (max 10 MB)</>
+                      )}
                     </div>
+                    {docFile && <div className="onb-upload-filename"><FileCheck size={14} /> Fichier sélectionné</div>}
                   </div>
                 </div>
               </div>

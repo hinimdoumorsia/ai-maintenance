@@ -1,40 +1,40 @@
 # backend/api/admin.py
 # Routes FastAPI pour la page Paramètres / Administration
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from services import admin_service
 
 router = APIRouter()
 
 
 @router.get("/entreprise")
-def get_entreprise():
+def get_entreprise(user_id: int = Query(...)):
     try:
-        return admin_service.get_entreprise()
+        return admin_service.get_entreprise(user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/entreprise")
-def update_entreprise(data: dict):
+def update_entreprise(data: dict, user_id: int = Query(...)):
     try:
-        return admin_service.update_entreprise(data)
+        return admin_service.update_entreprise(user_id, data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/machines")
-def get_machines():
+def get_machines(user_id: int = Query(...)):
     try:
-        return admin_service.get_machines()
+        return admin_service.get_machines(user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/machines")
-def add_machine(data: dict):
+def add_machine(data: dict, user_id: int = Query(...)):
     try:
-        return admin_service.add_machine(data)
+        return admin_service.add_machine(user_id, data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

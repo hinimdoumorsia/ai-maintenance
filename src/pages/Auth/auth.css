@@ -6,11 +6,13 @@
 
 .auth-page {
   min-height: 100vh;
+  width: 100vw;
   display: flex;
   background: #060a14;
   font-family: 'Space Grotesk', system-ui, sans-serif;
   color: #e6ecf5;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   position: relative;
 }
 
@@ -332,6 +334,7 @@
 
 .onb-page {
   min-height: 100vh;
+  width: 100vw;
   background: #060a14;
   font-family: 'Space Grotesk', system-ui, sans-serif;
   color: #e6ecf5;
@@ -598,11 +601,26 @@ textarea.onb-input {
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
+  position: relative;
 }
 
 .onb-upload:hover {
   border-color: #f97316;
   background: rgba(249,115,22,0.06);
+}
+
+.onb-upload.has-file {
+  border-color: #10b981;
+  background: rgba(16,185,129,0.06);
+}
+
+.onb-upload input[type='file'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .onb-upload-icon {
@@ -617,6 +635,17 @@ textarea.onb-input {
 
 .onb-upload-text strong {
   color: #f97316;
+}
+
+.onb-upload-filename {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #10b981;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 /* ── Machine Card ── */

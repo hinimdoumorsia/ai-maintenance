@@ -1,6 +1,9 @@
 // src/pages/Parametres/components/ParcMachines.tsx
 import React, { useState, useEffect } from 'react';
 import { Cpu, ChevronDown, Plus, Trash2, Upload, Radio, X } from 'lucide-react';
+import { useAuth } from '../../../contexts/AuthContext';
+
+const API = 'http://localhost:8000';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,58 +63,102 @@ const ParcMachines: React.FC = () => {
   const [addCapteurFor, setAddCapteurFor] = useState<string | null>(null);
   const [newC, setNewC] = useState({ type: 'accelerometre', position: '', acquisition: '' });
 
-  // ── Persistence
-  useEffect(() => {
-    const raw = localStorage.getItem('aim_machines');
-    if (raw) {
-      try { setMachines(JSON.parse(raw)); } catch {}
-    }
-  }, []);
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
 
-  const persist = (next: Machine[]) => {
-    setMachines(next);
-    localStorage.setItem('aim_machines', JSON.stringify(next));
+  // ── Persistence
+  const fetchMachines = () => {
+    if (!user) return;
+    fetch(`${API}/api/admin/machines?user_id=${user.id}`)
+      .then(res => res.json())
+      .then(data => {
+        // Map backend format to frontend format
+        const mapped = data.map((m: any) => ({
+          id: m.id_machine.toString(),
+          code: m.code_machine || '',
+          nom: m.nom_machine || '',
+          type: m.type_machine || 'autre',
+          role: m.role_machine || '',
+          documentNom: '',
+          capteurs: (m.capteurs || []).map((c: any) => ({
+            id: c.id_capteur.toString(),
+            type: c.type_capteur || '',
+            position: c.position_montage || '',
+            acquisition: c.unite_mesure || ''
+          }))
+        }));
+        setMachines(mapped);
+      })
+      .catch(err => console.error(err))
+      .finally(() => setLoading(false));
   };
+
+  useEffect(() => {
+    fetchMachines();
+  }, [user]);
 
   // ── Machine CRUD
-  const addMachine = () => {
-    if (!newM.nom.trim()) return;
-    const m: Machine = {
-      id:          genId(),
-      code:        newM.code.trim() || `M-${zeroPad(machines.length + 1)}`,
-      nom:         newM.nom.trim(),
-      type:        newM.type,
-      role:        newM.role.trim(),
-      documentNom: newM.documentNom,
-      capteurs:    [],
-    };
-    persist([...machines, m]);
-    setNewM({ code: '', nom: '', type: 'pompe_centrifuge', role: '', documentNom: '' });
-    setShowAdd(false);
-    setExpanded(m.id);
+  const addMachine = async () => {
+    if (!newM.nom.trim() || !user) return;
+    
+    try {
+      const res = await fetch(`${API}/api/admin/machines?user_id=${user.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newM)
+      });
+      if (res.ok) {
+        fetchMachines();
+        setNewM({ code: '', nom: '', type: 'pompe_centrifuge', role: '', documentNom: '' });
+        setShowAdd(false);
+      }
+    } catch (err) { console.error(err); }
   };
 
-  const removeMachine = (id: string) => {
-    persist(machines.filter(m => m.id !== id));
-    if (expanded === id) setExpanded(null);
+  const removeMachine = async (id: string) => {
+    try {
+      await fetch(`${API}/api/admin/machines/${id}`, { method: 'DELETE' });
+      fetchMachines();
+      if (expanded === id) setExpanded(null);
+    } catch (err) { console.error(err); }
   };
 
-  const updateMachine = (id: string, patch: Partial<Machine>) =>
-    persist(machines.map(m => m.id === id ? { ...m, ...patch } : m));
+  const updateMachine = async (id: string, patch: Partial<Machine>) => {
+    const m = machines.find(m => m.id === id);
+    if (!m) return;
+    try {
+      await fetch(`${API}/api/admin/machines/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...m, ...patch })
+      });
+      fetchMachines();
+    } catch (err) { console.error(err); }
+  };
 
   // ── Capteur CRUD
-  const addCapteur = (machineId: string) => {
+  const addCapteur = async (machineId: string) => {
     if (!newC.position.trim()) return;
-    const c: Capteur = { id: genId(), type: newC.type, position: newC.position.trim(), acquisition: newC.acquisition.trim() };
-    persist(machines.map(m => m.id === machineId ? { ...m, capteurs: [...m.capteurs, c] } : m));
-    setNewC({ type: 'accelerometre', position: '', acquisition: '' });
-    setAddCapteurFor(null);
+    try {
+      await fetch(`${API}/api/admin/machines/${machineId}/capteurs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newC)
+      });
+      fetchMachines();
+      setNewC({ type: 'accelerometre', position: '', acquisition: '' });
+      setAddCapteurFor(null);
+    } catch (err) { console.error(err); }
   };
 
-  const removeCapteur = (machineId: string, capteurId: string) =>
-    persist(machines.map(m =>
-      m.id === machineId ? { ...m, capteurs: m.capteurs.filter(c => c.id !== capteurId) } : m
-    ));
+  const removeCapteur = async (machineId: string, capteurId: string) => {
+    try {
+      await fetch(`${API}/api/admin/capteurs/${capteurId}`, { method: 'DELETE' });
+      fetchMachines();
+    } catch (err) { console.error(err); }
+  };
+
+  // Content replaced above
 
   const totalCapteurs = machines.reduce((s, m) => s + m.capteurs.length, 0);
 

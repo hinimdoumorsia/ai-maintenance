@@ -1,6 +1,9 @@
 // src/pages/Parametres/components/EntrepriseForm.tsx
 import React, { useState, useRef, useEffect } from 'react';
 import { Building2, Upload, Save, CheckCircle, X } from 'lucide-react';
+import { useAuth } from '../../../contexts/AuthContext';
+
+const API = 'http://localhost:8000';
 
 const DOMAINES = [
   { value: '', label: 'Sélectionner un domaine...' },
@@ -45,15 +48,35 @@ const DEFAULT: EntrepriseData = {
 const EntrepriseForm: React.FC = () => {
   const [data, setData] = useState<EntrepriseData>(DEFAULT);
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
   const logoRef = useRef<HTMLInputElement>(null);
   const docRef  = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
-    const raw = localStorage.getItem('aim_entreprise');
-    if (raw) {
-      try { setData(JSON.parse(raw)); } catch {}
-    }
-  }, []);
+    if (!user) return;
+    
+    fetch(`${API}/api/admin/entreprise?user_id=${user.id}`)
+      .then(res => res.json())
+      .then(resData => {
+        if (resData && resData.nom_entreprise) {
+          setData({
+            nom: resData.nom_entreprise || '',
+            telephone: resData.contact_telephone || '',
+            email: resData.contact_email || '',
+            adresse: resData.adresse_usine || '',
+            domaineIndustriel: resData.domaine_industriel || '',
+            descriptif: resData.descriptif_activite || '',
+            descriptifDocumentName: '',
+            logo: null,
+            logoName: '',
+            siteWeb: resData.site_web || '',
+          });
+        }
+      })
+      .catch(err => console.error("Error fetching entreprise:", err))
+      .finally(() => setLoading(false));
+  }, [user]);
 
   const set = (key: keyof EntrepriseData, val: string | null) =>
     setData(d => ({ ...d, [key]: val }));
@@ -74,11 +97,35 @@ const EntrepriseForm: React.FC = () => {
     if (file) set('descriptifDocumentName', file.name);
   };
 
-  const handleSave = () => {
-    localStorage.setItem('aim_entreprise', JSON.stringify(data));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  const handleSave = async () => {
+    if (!user) return;
+    try {
+      const payload = {
+        nom_entreprise: data.nom,
+        contact_telephone: data.telephone,
+        contact_email: data.email,
+        adresse_usine: data.adresse,
+        domaine_industriel: data.domaineIndustriel,
+        descriptif_activite: data.descriptif,
+        production_principale: '',
+        site_web: data.siteWeb
+      };
+      
+      const res = await fetch(`${API}/api/admin/entreprise?user_id=${user.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      }
+    } catch (err) {
+      console.error("Error saving:", err);
+    }
   };
+
+  if (loading) return <div className="param-card"><div className="param-card-header">Chargement...</div></div>;
 
   return (
     <div className="param-card">
