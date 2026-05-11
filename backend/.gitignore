@@ -1,0 +1,51 @@
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║  🔒 SÉCURITÉ — NE JAMAIS COMMITTER CES FICHIERS                             ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+
+# ━━━ FICHIERS SENSIBLES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+.env
+.env.local
+.env.*.local
+.env.*.secret
+
+# ━━━ DONNÉES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+data/uploads/*
+!data/uploads/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/reports/*
+!data/reports/.gitkeep
+data/plots/*
+!data/plots/.gitkeep
+data/db/maintenance.db
+
+# ━━━ CACHE & TEMP ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+chroma_db/
+*.sqlite3
+*.db
+
+# ━━━ PYTHON ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+*.log
+
+# ━━━ IDE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ━━━ OS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+.DS_Store
+Thumbs.db
