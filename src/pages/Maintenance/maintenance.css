@@ -182,9 +182,10 @@
 }
 
 /* ── BT Row / Planning row ── */
+/* CORRECTION : colonne technicien 180px, action 160px pour éviter la troncature */
 .maint-bt-header {
   display: grid;
-  grid-template-columns: 70px 1fr 110px 70px 100px 90px 80px;
+  grid-template-columns: 70px 1fr 110px 55px 100px 80px 180px 160px;
   gap: 10px;
   padding: 8px 16px;
   background: #f9fafb;
@@ -198,7 +199,7 @@
 
 .maint-bt-row {
   display: grid;
-  grid-template-columns: 70px 1fr 110px 70px 100px 90px 80px;
+  grid-template-columns: 70px 1fr 110px 55px 100px 80px 180px 160px;
   gap: 10px;
   padding: 11px 16px;
   border-bottom: 1px solid #f9fafb;
@@ -390,7 +391,7 @@
 @media (max-width: 1100px) {
   .maint-stats-bar { grid-template-columns: repeat(3, 1fr); }
   .maint-bt-header,
-  .maint-bt-row    { grid-template-columns: 60px 1fr 80px 60px 90px 80px 60px; }
+  .maint-bt-row    { grid-template-columns: 60px 1fr 80px 50px 90px 70px 160px 140px; }
 }
 
 @media (max-width: 800px) {
@@ -437,4 +438,264 @@
 [data-theme="dark"] .maint-skeleton {
   background: linear-gradient(90deg, #1a2238 25%, #243049 50%, #1a2238 75%);
   background-size: 200% 100%;
+}
+
+
+/* Modal */
+.maint-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.maint-modal {
+  background: white;
+  border-radius: 12px;
+  width: 500px;
+  max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+}
+
+[data-theme="dark"] .maint-modal {
+  background: #151c2e;
+  border: 1px solid #243049;
+}
+
+.maint-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.maint-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.maint-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.maint-modal form {
+  padding: 20px;
+}
+
+.maint-form-group {
+  margin-bottom: 16px;
+}
+
+.maint-form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #6b7280;
+}
+
+.maint-form-group input,
+.maint-form-group select,
+.maint-form-group textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+}
+
+[data-theme="dark"] .maint-form-group input,
+[data-theme="dark"] .maint-form-group select,
+[data-theme="dark"] .maint-form-group textarea {
+  background: #0f1525;
+  border-color: #243049;
+  color: #e6ecf5;
+}
+
+.maint-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.maint-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.btn-primary {
+  background: #f97316;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-secondary {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-new-bt {
+  margin-left: auto;
+  background: #f97316 !important;
+  color: white !important;
+  border-radius: 6px !important;
+  gap: 6px;
+}
+
+/* Boutons d'assignation */
+.assign-btn {
+  background: #10b981 !important;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 6px 12px !important;
+  cursor: pointer !important;
+  color: white !important;
+  font-size: 11px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-weight: 500 !important;
+}
+
+.assign-btn:hover {
+  background: #059669 !important;
+}
+
+.assign-btn:disabled {
+  background: #9ca3af !important;
+  cursor: not-allowed !important;
+}
+
+.unassign-btn {
+  background: #ef4444 !important;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 6px 12px !important;
+  cursor: pointer !important;
+  color: white !important;
+  font-size: 11px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-weight: 500 !important;
+}
+
+.unassign-btn:hover {
+  background: #dc2626 !important;
+}
+
+.unassign-btn:disabled {
+  background: #9ca3af !important;
+  cursor: not-allowed !important;
+}
+
+/* Sélecteur de technicien — CORRIGÉ : largeur suffisante pour afficher le texte complet */
+.tech-select {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  font-size: 12px;
+  color: #111827;
+  width: 100%;
+  min-width: 175px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tech-select:focus {
+  outline: none;
+  border-color: #f97316;
+}
+
+/* Mode sombre */
+[data-theme="dark"] .tech-select {
+  background: #1f2937;
+  border-color: #374151;
+  color: #f3f4f6;
+}
+
+/* Styles pour les inputs du modal - support thème clair/sombre */
+.maint-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #ffffff;
+  color: #111827;
+  transition: all 0.2s ease;
+}
+
+.maint-input:focus {
+  outline: none;
+  border-color: #f97316;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2);
+}
+
+[data-theme="dark"] .maint-input {
+  background: #1f2937;
+  border-color: #374151;
+  color: #f3f4f6;
+}
+
+[data-theme="dark"] .maint-input:focus {
+  border-color: #f97316;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.3);
+}
+
+.maint-input-disabled {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .maint-input-disabled {
+  background: #111827;
+  border-color: #243049;
+  color: #9ca3af;
+}
+
+.maint-input-small {
+  display: block;
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+[data-theme="dark"] .maint-input-small {
+  color: #5a6788;
 }

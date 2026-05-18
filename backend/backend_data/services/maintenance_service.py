@@ -26,14 +26,13 @@ def get_planning() -> list[dict]:
                 m.nom_machine,
                 m.type_machine,
                 a.nom_atelier,
-                u.prenom || ' ' || u.nom AS technicien,
-                u.telephone              AS technicien_tel,
+                (SELECT prenom || ' ' || nom FROM utilisateur WHERE id_utilisateur = bt.technicien_principal_id) AS technicien,
+                (SELECT telephone FROM utilisateur WHERE id_utilisateur = bt.technicien_principal_id) AS technicien_tel,
                 d.type_defaut,
                 d.gravite
             FROM bon_de_travail bt
             JOIN machine m      ON bt.id_machine = m.id_machine
             JOIN atelier a      ON m.id_atelier  = a.id_atelier
-            LEFT JOIN utilisateur u  ON bt.technicien_principal_id = u.id_utilisateur
             LEFT JOIN defaut_detecte d ON bt.id_defaut = d.id_defaut
             WHERE bt.statut IN ('cree','planifie','en_cours')
               AND bt.date_planifiee IS NOT NULL
@@ -72,7 +71,7 @@ def get_bons_de_travail(statut: str = None, priorite: str = None) -> list[dict]:
                 bt.numero_bt,
                 bt.type_intervention,
                 bt.priorite,
-                bt.description,
+                bt.description as titre,
                 bt.date_creation,
                 bt.date_planifiee,
                 bt.date_debut_reelle,
@@ -87,13 +86,12 @@ def get_bons_de_travail(statut: str = None, priorite: str = None) -> list[dict]:
                 m.nom_machine,
                 m.type_machine,
                 a.nom_atelier,
-                u.prenom || ' ' || u.nom AS technicien,
+                (SELECT prenom || ' ' || nom FROM utilisateur WHERE id_utilisateur = bt.technicien_principal_id) AS prenom_nom_technicien,
                 d.type_defaut,
                 d.gravite                AS gravite_defaut
             FROM bon_de_travail bt
             JOIN machine m      ON bt.id_machine = m.id_machine
             JOIN atelier a      ON m.id_atelier  = a.id_atelier
-            LEFT JOIN utilisateur u  ON bt.technicien_principal_id = u.id_utilisateur
             LEFT JOIN defaut_detecte d ON bt.id_defaut = d.id_defaut
             {where_sql}
             ORDER BY
@@ -220,9 +218,179 @@ def get_maintenance_stats() -> dict:
                 (SELECT COUNT(*) FROM bon_de_travail WHERE statut='termine') AS bt_termines,
                 (SELECT COUNT(*) FROM piece_rechange WHERE stock_actuel <= stock_min) AS stocks_critiques,
                 (SELECT COUNT(*) FROM piece_rechange) AS total_references,
-                ROUND((SELECT SUM(pr.prix_unitaire * pr.stock_actuel) FROM piece_rechange), 0) AS valeur_stock_total,
-                ROUND((SELECT AVG(duree_reelle_heures) FROM bon_de_travail
-                       WHERE duree_reelle_heures IS NOT NULL), 1) AS mttr_moyen_h,
-                (SELECT COUNT(*) FROM historique_maintenance WHERE defaut_resolu=1) AS interventions_reussies
+                (SELECT COALESCE(SUM(stock_actuel * prix_unitaire), 0) FROM piece_rechange) AS valeur_stock_total,
+                (SELECT AVG(duree_reelle_heures) FROM bon_de_travail
+                 WHERE duree_reelle_heures IS NOT NULL AND duree_reelle_heures > 0) AS mttr_moyen_h,
+                (SELECT COUNT(*) FROM bon_de_travail WHERE statut='termine') AS interventions_reussies
         """).fetchone()
         return dict(row)
+
+
+def get_machines() -> list[dict]:
+    with db_session() as conn:
+        rows = conn.execute("""
+            SELECT id_machine, code_machine, nom_machine
+            FROM machine
+            WHERE statut = 'en_service'
+            ORDER BY code_machine
+        """).fetchall()
+        return rows_to_list(rows)
+
+def get_techniciens() -> list[dict]:
+    with db_session() as conn:
+        rows = conn.execute("""
+            SELECT DISTINCT id_utilisateur as id_technicien, 
+                   prenom || ' ' || nom as nom_complet
+            FROM utilisateur
+            WHERE role = 'technicien' AND statut = 'actif'
+            ORDER BY nom
+        """).fetchall()
+        return rows_to_list(rows)
+
+
+def assigner_technicien(id_bt: int, id_technicien: int) -> dict:
+    """Assigne un technicien à un BT et retourne son nom."""
+    with db_session() as conn:
+        # Mettre à jour le BT
+        if id_technicien and id_technicien > 0:
+            conn.execute("""
+                UPDATE bon_de_travail 
+                SET technicien_principal_id = ?
+                WHERE id_bt = ?
+            """, (id_technicien, id_bt))
+        else:
+            conn.execute("""
+                UPDATE bon_de_travail 
+                SET technicien_principal_id = NULL
+                WHERE id_bt = ?
+            """, (id_bt,))
+        conn.commit()
+        
+        # Récupérer le nom du technicien pour le retour
+        row = conn.execute("""
+            SELECT prenom || ' ' || nom as prenom_nom_technicien
+            FROM utilisateur
+            WHERE id_utilisateur = ?
+        """, (id_technicien,)).fetchone() if id_technicien and id_technicien > 0 else None
+        
+        return {
+            "success": True, 
+            "technicien": row['prenom_nom_technicien'] if row else None
+        }
+    
+
+def update_bt_statut(id_bt: int, statut: str) -> dict:
+    """Met à jour le statut d'un BT."""
+    with db_session() as conn:
+        conn.execute("""
+            UPDATE bon_de_travail 
+            SET statut = ?
+            WHERE id_bt = ?
+        """, (statut, id_bt))
+        conn.commit()
+        return {"success": True, "statut": statut}
+
+
+
+def enregistrer_historique(type_action: str, action: str, description: str, utilisateur: str = None, details: str = None):
+    """Enregistre une action dans l'historique."""
+    with db_session() as conn:
+        conn.execute("""
+            INSERT INTO historique (type, action, description, utilisateur, details)
+            VALUES (?, ?, ?, ?, ?)
+        """, (type_action, action, description, utilisateur, details))
+        conn.commit()
+
+
+def get_historique() -> list[dict]:
+    """Récupère tout l'historique."""
+    with db_session() as conn:
+        rows = conn.execute("""
+            SELECT id_historique as id, type, action, description, utilisateur, details, date
+            FROM historique
+            ORDER BY date DESC
+            LIMIT 500
+        """).fetchall()
+        return rows_to_list(rows)
+
+
+def get_historique_stats() -> dict:
+    """Statistiques globales de l'historique."""
+    with db_session() as conn:
+        row = conn.execute("""
+            SELECT
+                COUNT(*) as total_actions,
+                SUM(CASE WHEN type = 'bt' THEN 1 ELSE 0 END) as bt_crees,
+                SUM(CASE WHEN type = 'technicien' THEN 1 ELSE 0 END) as assignations,
+                SUM(CASE WHEN type = 'statut' THEN 1 ELSE 0 END) as changements_statut,
+                SUM(CASE WHEN type = 'stock' THEN 1 ELSE 0 END) as mouvements_stock
+            FROM historique
+        """).fetchone()
+        return dict(row) if row else {}
+
+
+def clear_historique() -> dict:
+    """Efface tout l'historique."""
+    with db_session() as conn:
+        conn.execute("DELETE FROM historique")
+        conn.commit()
+        return {"success": True}
+    
+
+def create_bon_de_travail(data: dict) -> dict:
+    from datetime import datetime
+    
+    with db_session() as conn:
+        bt_count = conn.execute("SELECT COUNT(*) as count FROM bon_de_travail").fetchone()
+        bt_num = f"BT-{datetime.now().strftime('%Y%m%d')}-{bt_count['count'] + 1}"
+        
+        conn.execute("""
+            INSERT INTO bon_de_travail (
+                numero_bt, description, type_intervention, priorite, statut,
+                date_creation, date_planifiee, id_machine
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            bt_num,
+            data.get("description", ""),
+            data.get("type_intervention", "predictif"),
+            data.get("priorite", "moyenne"),
+            "cree",
+            datetime.now().isoformat(),
+            data.get("date_planifiee", datetime.now().isoformat()),
+            int(data.get("id_machine"))
+        ))
+        conn.commit()
+        
+        # Enregistrer dans l'historique
+        machine = conn.execute("SELECT nom_machine FROM machine WHERE id_machine = ?", (int(data.get("id_machine")),)).fetchone()
+        enregistrer_historique(
+            type_action="bt",
+            action="Création BT",
+            description=f"BT {bt_num} créé pour la machine {machine['nom_machine'] if machine else 'Inconnue'}",
+            utilisateur=data.get("utilisateur", "Système"),
+            details=f"Priorité: {data.get('priorite', 'moyenne')}, Type: {data.get('type_intervention', 'predictif')}"
+        )
+        
+        return {"success": True, "numero_bt": bt_num, "message": f"BT {bt_num} créé"}
+
+
+
+def update_stock_threshold(id_piece: int, stock_min: int, stock_max: int) -> dict:
+    with db_session() as conn:
+        conn.execute("""
+            UPDATE piece_rechange 
+            SET stock_min = ?, stock_max = ?
+            WHERE id_piece = ?
+        """, (stock_min, stock_max, id_piece))
+        conn.commit()
+        
+        # Enregistrer dans l'historique
+        enregistrer_historique(
+            type_action="stock",
+            action="Modification seuils",
+            description=f"Seuils modifiés: min={stock_min}, max={stock_max}",
+            utilisateur="Utilisateur",
+            details=f"Pièce ID: {id_piece}"
+        )
+        
+        return {"success": True, "stock_min": stock_min, "stock_max": stock_max}

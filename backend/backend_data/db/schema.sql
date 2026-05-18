@@ -1081,6 +1081,19 @@ ORDER BY
     END,
     c.niveau_batterie_pct ASC;
 
+
+
+
+    CREATE TABLE IF NOT EXISTS historique (
+    id_historique INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    action TEXT NOT NULL,
+    description TEXT,
+    utilisateur TEXT,
+    details TEXT,
+    date TEXT DEFAULT (datetime('now'))
+);
+
 -- ================================================================
 -- FIN DU SCRIPT
 -- ================================================================

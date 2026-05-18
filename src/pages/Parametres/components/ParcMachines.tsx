@@ -19,6 +19,13 @@ const MACHINE_TYPES: Record<string, string> = {
   autre:             'Autre',
 };
 
+const STATUTS: Record<string, string> = {
+  en_service:   'En service',
+  arret:        'En arrêt',
+  maintenance:  'En maintenance',
+  hors_service: 'Hors service',
+};
+
 const CAPTEUR_TYPES: Record<string, string> = {
   accelerometre:    'Accéléromètre',
   sonde_proximite:  'Sonde proximité',
@@ -41,6 +48,7 @@ interface Machine {
   nom: string;
   type: string;
   role: string;
+  statut: string;
   documentNom: string;
   capteurs: Capteur[];
 }
@@ -57,7 +65,14 @@ const ParcMachines: React.FC = () => {
 
   // Add machine form
   const [showAdd, setShowAdd] = useState(false);
-  const [newM, setNewM] = useState({ code: '', nom: '', type: 'pompe_centrifuge', role: '', documentNom: '' });
+  const [newM, setNewM] = useState({ 
+    code: '', 
+    nom: '', 
+    type: 'pompe_centrifuge', 
+    role: '', 
+    statut: 'en_service',
+    documentNom: '' 
+  });
 
   // Add capteur form (per machine id)
   const [addCapteurFor, setAddCapteurFor] = useState<string | null>(null);
@@ -79,6 +94,7 @@ const ParcMachines: React.FC = () => {
           nom: m.nom_machine || '',
           type: m.type_machine || 'autre',
           role: m.role_machine || '',
+          statut: m.statut || 'en_service',
           documentNom: '',
           capteurs: (m.capteurs || []).map((c: any) => ({
             id: c.id_capteur.toString(),
@@ -109,7 +125,7 @@ const ParcMachines: React.FC = () => {
       });
       if (res.ok) {
         fetchMachines();
-        setNewM({ code: '', nom: '', type: 'pompe_centrifuge', role: '', documentNom: '' });
+        setNewM({ code: '', nom: '', type: 'pompe_centrifuge', role: '', statut: 'en_service', documentNom: '' });
         setShowAdd(false);
       }
     } catch (err) { console.error(err); }
@@ -157,8 +173,6 @@ const ParcMachines: React.FC = () => {
       fetchMachines();
     } catch (err) { console.error(err); }
   };
-
-  // Content replaced above
 
   const totalCapteurs = machines.reduce((s, m) => s + m.capteurs.length, 0);
 
@@ -222,11 +236,21 @@ const ParcMachines: React.FC = () => {
                 <option key={k} value={k}>{v}</option>
               ))}
             </select>
+            <select
+              className="param-select-sm"
+              value={newM.statut}
+              onChange={e => setNewM(p => ({ ...p, statut: e.target.value }))}
+            >
+              {Object.entries(STATUTS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
             <input
               className="param-input-sm"
               placeholder="Rôle dans le processus"
               value={newM.role}
               onChange={e => setNewM(p => ({ ...p, role: e.target.value }))}
+              style={{ gridColumn: 'span 2' }}
             />
           </div>
 
@@ -247,7 +271,7 @@ const ParcMachines: React.FC = () => {
           <div className="add-form-actions">
             <button
               className="param-btn-xs btn-xs-cancel"
-              onClick={() => { setShowAdd(false); setNewM({ code: '', nom: '', type: 'pompe_centrifuge', role: '', documentNom: '' }); }}
+              onClick={() => { setShowAdd(false); setNewM({ code: '', nom: '', type: 'pompe_centrifuge', role: '', statut: 'en_service', documentNom: '' }); }}
             >
               Annuler
             </button>
@@ -286,6 +310,10 @@ const ParcMachines: React.FC = () => {
               </div>
 
               <span className="machine-type-badge">{MACHINE_TYPES[machine.type] || machine.type}</span>
+
+              <span className={`machine-statut-badge ${machine.statut === 'en_service' ? 'statut-ok' : machine.statut === 'maintenance' ? 'statut-warning' : machine.statut === 'arret' ? 'statut-arret' : 'statut-hs'}`}>
+                {STATUTS[machine.statut] || machine.statut}
+              </span>
 
               <span className={`machine-capteur-badge ${machine.capteurs.length > 0 ? 'has-capteurs' : ''}`}>
                 <Radio size={11} />
@@ -335,6 +363,18 @@ const ParcMachines: React.FC = () => {
                       onChange={e => updateMachine(machine.id, { type: e.target.value })}
                     >
                       {Object.entries(MACHINE_TYPES).map(([k, v]) => (
+                        <option key={k} value={k}>{v}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="param-field">
+                    <label className="param-label">Statut</label>
+                    <select
+                      className="param-select-sm"
+                      value={machine.statut}
+                      onChange={e => updateMachine(machine.id, { statut: e.target.value })}
+                    >
+                      {Object.entries(STATUTS).map(([k, v]) => (
                         <option key={k} value={k}>{v}</option>
                       ))}
                     </select>

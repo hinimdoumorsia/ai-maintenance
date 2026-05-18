@@ -13,7 +13,7 @@ interface BT {
   nom_machine: string | null;
   code_machine: string | null;
   nom_atelier: string | null;
-  prenom_nom_technicien: string | null;
+  technicien: string | null;  // ← MODIFIÉ : prenom_nom_technicien → technicien
 }
 
 interface PlanningProps {
@@ -100,8 +100,9 @@ const Planning: React.FC<PlanningProps> = ({ data, loading }) => {
 
             <span className={`maint-status ${bt.statut}`}>{statusLabel(bt.statut)}</span>
 
+            {/* ← MODIFIÉ : bt.prenom_nom_technicien → bt.technicien */}
             <span style={{ fontSize: 11, color: "#6b7280" }}>
-              {bt.prenom_nom_technicien ?? "Non assigné"}
+              {bt.technicien ?? "Non assigné"}
             </span>
           </div>
         );
