@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Download, FileText, BarChart2, Wrench, TrendingUp, Database } from "lucide-react";
 import { ExportOption, ExportFormat } from "../types";
+import { exportToolsData } from "../../../services/api";
 
 const EXPORT_OPTIONS: ExportOption[] = [
   { id: "csv",     label: "Données capteurs",  format: "CSV",     description: "Historique brut des capteurs",   icon: "chart" },
@@ -16,9 +17,16 @@ const ExportCard: React.FC = () => {
   const [period, setPeriod]     = useState<string>("7 derniers jours");
   const [exporting, setExporting] = useState(false);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     setExporting(true);
-    setTimeout(() => setExporting(false), 1800);
+    try {
+      const res = await exportToolsData({ format: selected, period });
+      if (res.download_url) {
+        window.open(res.download_url, "_blank");
+      }
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (

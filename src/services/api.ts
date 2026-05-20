@@ -7,6 +7,20 @@ export interface TrainingJob {
   status: string;
 }
 
+export interface TrainingJobSummary {
+  job_id: string;
+  status: string;
+  model_id?: string;
+  created_at?: string;
+}
+
+export interface JobResultsEnvelope {
+  job_id: string;
+  status: string;
+  result: unknown;
+  n_logs: number;
+}
+
 export interface LogEntry {
   type: string;
   title: string;
@@ -105,6 +119,135 @@ export async function getHealth(): Promise<{ status: string }> {
   const response = await fetch(`${API_BASE_URL}/health`);
   if (!response.ok) {
     throw new Error(`Health check failed: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function listJobs(): Promise<TrainingJobSummary[]> {
+  const response = await fetch(`${API_BASE_URL}/jobs`);
+  if (!response.ok) {
+    throw new Error(`Failed to list jobs: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getJobResults(jobId: string): Promise<JobResultsEnvelope> {
+  const response = await fetch(`${API_BASE_URL}/results/${jobId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to get job results: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// ---- Predictions API -----------------------------------------------------
+export interface PredictionResult {
+  job_id?: string;
+  predictions?: any;
+  summary?: any;
+}
+
+export async function predictFile(
+  file: File | Blob,
+  modelId: string,
+  options: Record<string, any> = {}
+): Promise<PredictionResult> {
+  const fd = new FormData();
+  fd.append('file', file as any);
+  fd.append('model_id', modelId);
+  Object.entries(options).forEach(([k, v]) => fd.append(k, String(v)));
+
+  const response = await fetch(`${API_BASE_URL}/api/predictions/predict`, {
+    method: 'POST',
+    body: fd,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Prediction failed: ${response.status} ${text}`);
+  }
+  return response.json();
+}
+
+export async function batchPredict(payload: any): Promise<PredictionResult> {
+  const response = await fetch(`${API_BASE_URL}/api/predictions/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Batch predict failed: ${response.statusText}`);
+  return response.json();
+}
+
+export async function streamPredictions(
+  jobId: string | null,
+  onEvent: (data: any) => void,
+  onDone: () => void,
+  onError: (err: Error) => void
+): Promise<() => void> {
+  const url = jobId ? `${API_BASE_URL}/api/predictions/stream?job_id=${jobId}` : `${API_BASE_URL}/api/predictions/stream`;
+  const es = new EventSource(url);
+  es.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      onEvent(d);
+      if (d.type === 'done' || d.type === 'error') {
+        es.close();
+        onDone();
+      }
+    } catch (err) {
+      console.error('streamPredictions parse', err);
+    }
+  };
+  es.onerror = (ev) => {
+    es.close();
+    onError(new Error('Prediction stream error'));
+  };
+  return () => es.close();
+}
+
+export async function exportPredictions(jobId: string, format: string): Promise<Blob> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/predictions/export?job_id=${encodeURIComponent(jobId)}&format=${encodeURIComponent(format)}`
+  );
+  if (!response.ok) {
+    throw new Error(`Export failed: ${response.statusText}`);
+  }
+  return response.blob();
+}
+
+// ---- Tools API -----------------------------------------------------------
+export async function getToolsDiagnostic(): Promise<{ status: string; checks: any[] }> {
+  const response = await fetch(`${API_BASE_URL}/api/tools/diagnostic`);
+  if (!response.ok) {
+    throw new Error(`Diagnostics failed: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getToolsLogs(): Promise<{ logs: any[] }> {
+  const response = await fetch(`${API_BASE_URL}/api/tools/logs`);
+  if (!response.ok) {
+    throw new Error(`Logs fetch failed: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getToolsDataQuality(): Promise<{ metrics: any[] }> {
+  const response = await fetch(`${API_BASE_URL}/api/tools/data-quality`);
+  if (!response.ok) {
+    throw new Error(`Data quality failed: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function exportToolsData(payload: { format: string; period: string }): Promise<{ download_url?: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/tools/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(`Export failed: ${response.statusText}`);
   }
   return response.json();
 }

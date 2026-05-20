@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { DataQualityMetric } from "../types";
+import { getToolsDataQuality } from "../../../services/api";
 
 const METRICS: DataQualityMetric[] = [
   { name: "Complétude des données",  value: 92, status: "good",    detail: "8% de valeurs manquantes — acceptable" },
@@ -27,7 +28,24 @@ const labelMap: Record<DataQualityMetric["status"], string> = {
 };
 
 const DataQualityCard: React.FC = () => {
-  const overall = Math.round(METRICS.reduce((acc, m) => acc + m.value, 0) / METRICS.length);
+  const [metrics, setMetrics] = useState<DataQualityMetric[]>(METRICS);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const data = await getToolsDataQuality();
+        if (!active || !Array.isArray(data.metrics)) return;
+        setMetrics(data.metrics as DataQualityMetric[]);
+      } catch {
+        // keep defaults
+      }
+    };
+    load();
+    return () => { active = false; };
+  }, []);
+
+  const overall = Math.round(metrics.reduce((acc, m) => acc + m.value, 0) / metrics.length);
 
   return (
     <div className="outil-card">
@@ -47,7 +65,7 @@ const DataQualityCard: React.FC = () => {
       </div>
 
       <div className="quality-list">
-        {METRICS.map((m) => (
+        {metrics.map((m) => (
           <div key={m.name} className="quality-item">
             <div className="quality-item-top">
               <span className="quality-name">{m.name}</span>

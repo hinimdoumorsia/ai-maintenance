@@ -15,6 +15,7 @@ import logging
 import os
 import shutil
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator
 from dotenv import load_dotenv
@@ -103,6 +104,7 @@ async def upload_and_train(
         "queue":     queue,
         "file_path": str(file_path),
         "model_id":  model_id,
+        "created_at": datetime.utcnow().isoformat(),
     }
 
     # Lancer le pipeline en background
@@ -219,7 +221,12 @@ def get_results(job_id: str):
 def list_jobs():
     """Liste tous les jobs en mémoire."""
     return [
-        {"job_id": jid, "status": j["status"], "model_id": j.get("model_id")}
+        {
+            "job_id": jid,
+            "status": j["status"],
+            "model_id": j.get("model_id"),
+            "created_at": j.get("created_at"),
+        }
         for jid, j in jobs.items()
     ]
 

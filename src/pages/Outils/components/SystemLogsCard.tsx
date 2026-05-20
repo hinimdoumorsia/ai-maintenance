@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Terminal, RefreshCw } from "lucide-react";
 import { LogEntry } from "../types";
+import { getToolsLogs } from "../../../services/api";
 
 const LOGS: LogEntry[] = [
   { id: "l01", timestamp: "10:47:23", level: "INFO",  source: "Pipeline",  message: "Prédiction lancée pour MCH-004 — modèle LSTM v2.1" },
@@ -21,8 +22,24 @@ type Filter = "ALL" | "INFO" | "WARN" | "ERROR" | "DEBUG";
 
 const SystemLogsCard: React.FC = () => {
   const [filter, setFilter] = useState<Filter>("ALL");
+  const [logs, setLogs] = useState<LogEntry[]>(LOGS);
 
-  const filtered = filter === "ALL" ? LOGS : LOGS.filter((l) => l.level === filter);
+  const loadLogs = async () => {
+    try {
+      const data = await getToolsLogs();
+      if (Array.isArray(data.logs)) {
+        setLogs(data.logs as LogEntry[]);
+      }
+    } catch {
+      // keep defaults
+    }
+  };
+
+  useEffect(() => {
+    loadLogs();
+  }, []);
+
+  const filtered = filter === "ALL" ? logs : logs.filter((l) => l.level === filter);
 
   const levelCls: Record<string, string> = {
     INFO: "level-info", WARN: "level-warn", ERROR: "level-error", DEBUG: "level-debug",
@@ -48,7 +65,7 @@ const SystemLogsCard: React.FC = () => {
               {f}
             </button>
           ))}
-          <button className="btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }}>
+          <button className="btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={loadLogs}>
             <RefreshCw size={12} /> Actualiser
           </button>
         </div>

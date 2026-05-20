@@ -2,11 +2,15 @@
 import React from 'react';
 import { PerformanceData } from '../types';
 
-const data: PerformanceData[] = [
+const defaultData: PerformanceData[] = [
   { modelName: 'LSTM_001', f1Score: 0.93, precision: 0.87, recall: 0.86 },
   { modelName: 'Random Forest_002', f1Score: 0.78, precision: 0.65, recall: 0.88 },
   { modelName: 'XGBoost_003', f1Score: 0.75, precision: 0.65, recall: 0.82 },
 ];
+
+interface PerformanceCompareeProps {
+  data?: PerformanceData[];
+}
 
 const CHART_H = 220;
 const CHART_W = 520;
@@ -15,10 +19,9 @@ const PAD_B = 40;
 const PAD_T = 10;
 const INNER_H = CHART_H - PAD_B - PAD_T;
 const INNER_W = CHART_W - PAD_L - 20;
-const GROUP_W = INNER_W / data.length;
-const BAR_W = 20;
 const GROUP_BARS = 3;
 const GROUP_GAP = 6;
+const BAR_W = 20;
 
 const colors = ['#f97316', '#60a5fa', '#1e3a8a'];
 const yTicks = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
@@ -29,7 +32,11 @@ const barX = (groupIdx: number, barIdx: number) =>
 const barY = (val: number) => PAD_T + INNER_H - val * INNER_H;
 const barH = (val: number) => val * INNER_H;
 
-const PerformanceComparee: React.FC = () => (
+const PerformanceComparee: React.FC<PerformanceCompareeProps> = ({ data = defaultData }) => {
+  const safeData = data.length > 0 ? data : defaultData;
+  const GROUP_W = INNER_W / safeData.length;
+
+  return (
   <div className="card">
     <div className="card-header">
       <div className="card-title-group">
@@ -74,7 +81,7 @@ const PerformanceComparee: React.FC = () => (
       ))}
 
       {/* Bars */}
-      {data.map((d, gi) => {
+      {safeData.map((d, gi) => {
         const vals = [d.f1Score, d.precision, d.recall];
         return (
           <g key={d.modelName}>
@@ -107,6 +114,7 @@ const PerformanceComparee: React.FC = () => (
       </text>
     </svg>
   </div>
-);
+  );
+};
 
 export default PerformanceComparee;

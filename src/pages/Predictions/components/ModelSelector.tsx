@@ -3,10 +3,11 @@ import { Settings, ChevronDown } from "lucide-react";
 import { ModelOption } from "../types";
 
 const MODELS: ModelOption[] = [
-  { id: "lstm", name: "LSTM", description: "Séries temporelles" },
+  { id: "random_forest", name: "Random Forest", description: "Baseline robuste" },
   { id: "xgboost", name: "XGBoost", description: "Gradient Boosting" },
-  { id: "prophet", name: "Prophet", description: "Prévision saisonnière" },
-  { id: "arima", name: "ARIMA", description: "Modèle statistique" },
+  { id: "lightgbm", name: "LightGBM", description: "Boosting rapide" },
+  { id: "catboost", name: "CatBoost", description: "Catégories natives" },
+  { id: "extra_trees", name: "Extra Trees", description: "Bagging aléatoire" },
 ];
 
 interface ModelSelectorProps {

@@ -2,12 +2,18 @@
 import React from 'react';
 import { Model } from '../types';
 
-const models: Model[] = [
+const defaultModels: Model[] = [
   { id: 'LSTM_001', type: 'LSTM', status: 'Deployed', performance: 0.87, createdAt: '2024-01-15' },
   { id: 'LSTM_002', type: 'XGBoost', status: 'In-Training', performance: 0.82, createdAt: '2024-01-15' },
   { id: 'XGBoost_003', type: 'XGBoost', status: 'Archived', performance: 0.82, createdAt: '2024-01-15' },
   { id: 'XGBoost_003', type: 'LSTM', status: 'Archived', performance: 0.82, createdAt: '2024-01-15' },
 ];
+
+interface MesModelesProps {
+  models?: Model[];
+  loading?: boolean;
+  error?: string | null;
+}
 
 const statusClass: Record<string, string> = {
   Deployed: 'deployed',
@@ -15,7 +21,11 @@ const statusClass: Record<string, string> = {
   Archived: 'archived',
 };
 
-const MesModeles: React.FC = () => (
+const MesModeles: React.FC<MesModelesProps> = ({
+  models = defaultModels,
+  loading = false,
+  error = null,
+}) => (
   <div className="card">
     <div className="card-header">
       <div className="card-title-group">
@@ -37,6 +47,9 @@ const MesModeles: React.FC = () => (
         </svg>
       </button>
     </div>
+
+    {loading && <div style={{ marginBottom: 12, color: 'var(--text-muted)', fontSize: 12 }}>Chargement des modèles depuis le backend...</div>}
+    {error && <div style={{ marginBottom: 12, color: '#b91c1c', fontSize: 12 }}>{error}</div>}
 
     <table className="models-table">
       <thead>

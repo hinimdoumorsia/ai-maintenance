@@ -2,12 +2,16 @@
 import React from 'react';
 import { ModelRegistry } from '../types';
 
-const registry: ModelRegistry[] = [
+const defaultRegistry: ModelRegistry[] = [
   { id: '1', name: 'LSTM_001', version: 'Version 23 version: 3', versionNumber: 3, icon: 'neural' },
   { id: '2', name: 'Random Forest_002', version: 'Version 23 version: 3', versionNumber: 3, icon: 'forest' },
   { id: '3', name: 'Random Forest_002', version: 'Version 23 version: 2', versionNumber: 2, icon: 'forest' },
   { id: '4', name: 'XGBoost_003', version: 'Version 20 version: 1', versionNumber: 1, icon: 'boost' },
 ];
+
+interface RegistreModelesProps {
+  registry?: ModelRegistry[];
+}
 
 const NeuralIcon = () => (
   <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="var(--accent-blue)">
@@ -32,7 +36,7 @@ const BoostIcon = () => (
 
 const iconMap = { neural: <NeuralIcon />, forest: <ForestIcon />, boost: <BoostIcon /> };
 
-const RegistreModeles: React.FC = () => (
+const RegistreModeles: React.FC<RegistreModelesProps> = ({ registry = defaultRegistry }) => (
   <div className="card">
     <div className="card-header">
       <div className="card-title-group">

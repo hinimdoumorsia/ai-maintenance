@@ -3,9 +3,10 @@ import { Play, ChevronDown, Loader2 } from "lucide-react";
 
 interface ActionButtonProps {
   onLaunch: () => void;
+  onExport?: (format: "csv" | "excel" | "pdf") => void;
 }
 
-const ActionButton: React.FC<ActionButtonProps> = ({ onLaunch }) => {
+const ActionButton: React.FC<ActionButtonProps> = ({ onLaunch, onExport }) => {
   const [loading, setLoading] = useState(false);
   const [showDownload, setShowDownload] = useState(false);
 
@@ -40,9 +41,9 @@ const ActionButton: React.FC<ActionButtonProps> = ({ onLaunch }) => {
         </button>
         {showDownload && (
           <div className="download-dropdown right">
-            <button className="download-option">Export CSV</button>
-            <button className="download-option">Export Excel</button>
-            <button className="download-option">Export PDF</button>
+            <button className="download-option" onClick={() => onExport?.("csv")}>Export CSV</button>
+            <button className="download-option" onClick={() => onExport?.("excel")}>Export Excel</button>
+            <button className="download-option" onClick={() => onExport?.("pdf")}>Export PDF</button>
           </div>
         )}
       </div>

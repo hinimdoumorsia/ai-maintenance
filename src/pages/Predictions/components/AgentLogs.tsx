@@ -16,7 +16,12 @@ const IconMap: Record<AgentLog["icon"], React.ReactNode> = {
   prediction: <Zap size={14} color="#F97316" />,
 };
 
-const AgentLogs: React.FC = () => {
+interface AgentLogsProps {
+  logs?: AgentLog[] | any[];
+}
+
+const AgentLogs: React.FC<AgentLogsProps> = ({ logs: propLogs }) => {
+  const displayLogs: any[] = propLogs && propLogs.length ? propLogs : logs;
   return (
     <div className="card agent-logs-card">
       <div className="card-section-label">
@@ -24,11 +29,11 @@ const AgentLogs: React.FC = () => {
         <h3 className="section-title">Journaux de l'Agent</h3>
       </div>
       <div className="logs-list">
-        {logs.map((log, i) => (
+        {displayLogs.map((log, i) => (
           <div key={i} className="log-entry">
-            <span className="log-icon">{IconMap[log.icon]}</span>
-            <span className="log-time">{log.time}</span>
-            <span className="log-msg">{log.message}</span>
+            <span className="log-icon">{IconMap[(log.icon || 'analysis') as AgentLog['icon']]}</span>
+            <span className="log-time">{log.time || ''}</span>
+            <span className="log-msg">{log.message || log.detail || JSON.stringify(log)}</span>
           </div>
         ))}
       </div>

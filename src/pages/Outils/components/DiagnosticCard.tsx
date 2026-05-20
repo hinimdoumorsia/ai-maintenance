@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Play, CheckCircle, XCircle, AlertTriangle, Loader, Stethoscope } from "lucide-react";
 import { DiagnosticCheck, DiagnosticStatus } from "../types";
+import { getToolsDiagnostic } from "../../../services/api";
 
 const INITIAL_CHECKS: DiagnosticCheck[] = [
   { id: "c1", name: "Connexion base de données",      description: "Vérifie la connexion à la base de données principale",   status: "pending" },
@@ -17,32 +18,28 @@ const DiagnosticCard: React.FC = () => {
   const [checks, setChecks] = useState<DiagnosticCheck[]>(INITIAL_CHECKS);
   const [currentIdx, setCurrentIdx] = useState(-1);
 
-  const runDiagnostic = () => {
+  const runDiagnostic = async () => {
     setStatus("running");
     setCurrentIdx(0);
     const updated = INITIAL_CHECKS.map((c) => ({ ...c, status: "pending" as const }));
     setChecks(updated);
-
-    let idx = 0;
-    const tick = () => {
-      if (idx >= INITIAL_CHECKS.length) {
-        setStatus("success");
-        setCurrentIdx(-1);
-        return;
-      }
-      setCurrentIdx(idx);
-      const result = STATUS_AFTER[idx];
-      setChecks((prev) =>
-        prev.map((c, i) =>
-          i === idx
-            ? { ...c, status: result, detail: result === "fail" ? "Échec — vérifier la configuration" : result === "warning" ? "Données partiellement invalides" : "OK" }
-            : c
-        )
-      );
-      idx++;
-      setTimeout(tick, 700);
-    };
-    setTimeout(tick, 400);
+    try {
+      const data = await getToolsDiagnostic();
+      const next = (data.checks || []).map((c: any) => ({
+        id: String(c.id || c.name),
+        name: String(c.name || "Check"),
+        description: c.description || "",
+        status: c.status || "pending",
+        detail: c.detail,
+      }));
+      setChecks(next.length ? next : updated);
+      setStatus("success");
+    } catch (e) {
+      setStatus("error");
+      setChecks(updated.map((c) => ({ ...c, status: "fail", detail: "Erreur diagnostic" })));
+    } finally {
+      setCurrentIdx(-1);
+    }
   };
 
   const reset = () => {

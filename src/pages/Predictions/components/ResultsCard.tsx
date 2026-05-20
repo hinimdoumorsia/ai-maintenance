@@ -1,4 +1,5 @@
 import React from "react";
+import { PredictionResult } from "../../../services/api";
 import { Server, Wrench, AlertTriangle, Clock, Gauge, Zap } from "lucide-react";
 
 interface KPIBlock {
@@ -9,77 +10,62 @@ interface KPIBlock {
   trend?: string;
 }
 
-const kpis: KPIBlock[] = [
-  { icon: <Server size={18} />, value: "95%", label: "Taux de Disponibilité", badge: "1,122", trend: "objectif −30%" },
-  { icon: <Clock size={18} />, value: "1,122", label: "Mibo %", trend: "objectif −30%" },
-  { icon: <Gauge size={18} />, value: "1.9h", label: "Gtlbpcirf", trend: "objectif −25%" },
-  { icon: <Wrench size={18} />, value: "1,142 h", label: "Objectif +100% hums" },
-  { icon: <Clock size={18} />, value: "1.9h", label: "Objectif −25%" },
-  { icon: <AlertTriangle size={18} />, value: "4  6%", label: "Objectif −29%" },
-  { icon: <Zap size={18} />, value: "6%", label: "Taux des Pannes Imprévues" },
-  { icon: <Clock size={18} />, value: "24 février", label: "objectif −2%" },
-  { icon: <Gauge size={18} />, value: "<95ms", label: "Objectif −44.orc / Objectif :0.04" },
-];
+const formatNumber = (value: number | null, digits: number = 3) => {
+  if (value === null || Number.isNaN(value)) return "-";
+  return value.toFixed(digits);
+};
 
-const ResultsCard: React.FC = () => {
+interface ResultsCardProps {
+  results?: PredictionResult | null;
+}
+
+const ResultsCard: React.FC<ResultsCardProps> = ({ results }) => {
+  const values = Array.isArray(results?.predictions)
+    ? results?.predictions.filter((v) => typeof v === "number" && Number.isFinite(v))
+    : [];
+
+  const count = values.length;
+  const avg = count ? values.reduce((a, b) => a + b, 0) / count : null;
+  const min = count ? Math.min(...values) : null;
+  const max = count ? Math.max(...values) : null;
+  const sorted = count ? [...values].sort((a, b) => a - b) : [];
+  const p05 = count ? sorted[Math.floor(0.05 * (count - 1))] : null;
+  const p95 = count ? sorted[Math.floor(0.95 * (count - 1))] : null;
+  const modelId = (results?.summary as any)?.model_id || "-";
+
+  const kpis: KPIBlock[] = [
+    { icon: <Server size={18} />, value: count ? String(count) : "-", label: "Nb prédictions" },
+    { icon: <Gauge size={18} />, value: formatNumber(avg), label: "Moyenne" },
+    { icon: <AlertTriangle size={18} />, value: formatNumber(max), label: "Max" },
+    { icon: <Clock size={18} />, value: formatNumber(min), label: "Min" },
+    { icon: <Zap size={18} />, value: formatNumber(p95), label: "P95" },
+    { icon: <Wrench size={18} />, value: formatNumber(p05), label: "P05" },
+    { icon: <Server size={18} />, value: String(modelId), label: "Modèle" },
+  ];
   return (
     <div className="card results-card">
       <div className="results-header">
         <h3 className="section-title">Résultats</h3>
+        {count > 0 && (
+          <span style={{ fontSize: 12, color: "#64748b" }}>{count} prédictions reçues</span>
+        )}
       </div>
       <div className="kpi-header-row">
-        <span className="kpi-year-label">2025-2026 KPI de Fiabilité</span>
+        <span className="kpi-year-label">KPI des prédictions</span>
         <span className="kpi-badge-chip">
           <span className="kpi-badge-dot" />
-          16 Laporefts des Dattarlfleih,
+          {results?.job_id ? `Job ${results.job_id.slice(0, 8)}` : "Aucun job"}
         </span>
       </div>
       <div className="kpi-grid">
-        <div className="kpi-item kpi-primary">
-          <Server size={20} className="kpi-icon" />
-          <span className="kpi-value primary">95%</span>
-          <span className="kpi-label">Taux de Disponibilité</span>
-        </div>
-        <div className="kpi-item">
-          <span className="kpi-value accent">1,122</span>
-          <span className="kpi-sub">Mibo %</span>
-          <span className="kpi-trend neg">objectif −30%</span>
-        </div>
-        <div className="kpi-item">
-          <span className="kpi-value accent">1.9h</span>
-          <span className="kpi-sub">Gtlbpcirf</span>
-          <span className="kpi-trend neg">objectif −25%</span>
-        </div>
-        <div className="kpi-item">
-          <Wrench size={16} className="kpi-icon-sm" />
-          <span className="kpi-value">1,142 h</span>
-          <span className="kpi-label">Objectif +100% hums</span>
-        </div>
-        <div className="kpi-item">
-          <span className="kpi-value">1.9h</span>
-          <span className="kpi-label">Objectif</span>
-          <span className="kpi-trend neg">−25%</span>
-        </div>
-        <div className="kpi-item">
-          <span className="kpi-value">4  6%</span>
-          <span className="kpi-label">Objectif −29%</span>
-        </div>
-        <div className="kpi-item">
-          <Zap size={16} className="kpi-icon-sm" />
-          <span className="kpi-value">6%</span>
-          <span className="kpi-label">Taux des Pannes Imprévues</span>
-        </div>
-        <div className="kpi-item">
-          <Clock size={16} className="kpi-icon-sm" />
-          <span className="kpi-value">24 février</span>
-          <span className="kpi-trend neg">objectif −2%</span>
-        </div>
-        <div className="kpi-item">
-          <Gauge size={16} className="kpi-icon-sm" />
-          <span className="kpi-value">&lt;95ms</span>
-          <span className="kpi-label">Objectif −44.orc</span>
-          <span className="kpi-label">Objectif :0.04</span>
-        </div>
+        {kpis.map((kpi, i) => (
+          <div key={i} className={`kpi-item ${i === 0 ? "kpi-primary" : ""}`}>
+            {i === 0 && <span className="kpi-icon">{kpi.icon}</span>}
+            {i !== 0 && <span className="kpi-icon-sm">{kpi.icon}</span>}
+            <span className={`kpi-value ${i === 0 ? "primary" : ""}`}>{kpi.value}</span>
+            <span className="kpi-label">{kpi.label}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

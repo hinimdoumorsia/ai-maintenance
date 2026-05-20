@@ -10,6 +10,7 @@ matplotlib
 seaborn
 scipy
 scikit-learn
+mlflow
 fpdf2
 anthropic
 chardet

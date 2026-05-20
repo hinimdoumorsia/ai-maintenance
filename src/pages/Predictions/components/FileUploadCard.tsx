@@ -10,9 +10,10 @@ const MOCK_DATA: SensorRow[] = [
 
 interface FileUploadCardProps {
   onFileLoaded: (preview: DataPreview) => void;
+  onFileSelected?: (file: File) => void;
 }
 
-const FileUploadCard: React.FC<FileUploadCardProps> = ({ onFileLoaded }) => {
+const FileUploadCard: React.FC<FileUploadCardProps> = ({ onFileLoaded, onFileSelected }) => {
   const [activeTab, setActiveTab] = useState<"file" | "observation">("file");
   const [dragging, setDragging] = useState(false);
   const [preview, setPreview] = useState<DataPreview | null>(null);
@@ -22,12 +23,21 @@ const FileUploadCard: React.FC<FileUploadCardProps> = ({ onFileLoaded }) => {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      onFileSelected?.(file);
+      loadMockPreview(file.name);
+      return;
+    }
     loadMockPreview("dropped_file.csv");
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) loadMockPreview(file.name);
+    if (file) {
+      onFileSelected?.(file);
+      loadMockPreview(file.name);
+    }
   };
 
   const loadMockPreview = (fileName: string) => {
