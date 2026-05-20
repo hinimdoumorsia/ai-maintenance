@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import sys
 from urllib.parse import quote
 from datetime import datetime
 from pathlib import Path
@@ -10,14 +11,16 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from ..agents.eda_agent import _compute_quality_score, _compute_summary
-from ..agents.file_parser import parse_file
-from ..db.database import db_session, rows_to_list
+from agents.eda_agent import _compute_quality_score, _compute_summary
+from agents.file_parser import parse_file
+from db.database import db_session, rows_to_list
 
 router = APIRouter()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
+TRAINING_DIR = BASE_DIR.parent / "training"
+MLFLOW_DIR = TRAINING_DIR / "mlruns"
 
 
 def _period_to_days(period: str) -> int | None:
@@ -70,7 +73,7 @@ def _quality_metrics(df: pd.DataFrame) -> list[dict[str, Any]]:
             return "good"
         if score >= 75:
             return "warning"
-        return "bad"
+        return "critical"
 
     completeness = max(0.0, 100.0 - float(missing_pct))
     duplicates = max(0.0, 100.0 - float(dup_pct))
@@ -78,35 +81,38 @@ def _quality_metrics(df: pd.DataFrame) -> list[dict[str, Any]]:
 
     return [
         {
-            "name": "Completeness",
+            "name": "Complétude des données",
             "value": round(completeness, 2),
             "status": status_for(completeness),
-            "detail": f"Missing values: {missing_pct:.2f}%",
+            "detail": f"{missing_pct:.2f}% de valeurs manquantes",
         },
         {
-            "name": "Duplicates",
+            "name": "Doublons détectés",
             "value": round(duplicates, 2),
             "status": status_for(duplicates),
-            "detail": f"Duplicate rows: {dup_pct:.2f}%",
+            "detail": f"{dup_pct:.2f}% de lignes dupliquées",
         },
         {
-            "name": "Outliers",
+            "name": "Valeurs aberrantes",
             "value": round(outliers, 2),
             "status": status_for(outliers),
-            "detail": f"Avg outliers: {avg_outlier:.2f}%",
+            "detail": f"{avg_outlier:.2f}% d'outliers en moyenne",
         },
         {
-            "name": "Quality score",
+            "name": "Score qualité global",
             "value": quality,
             "status": status_for(float(quality)),
-            "detail": "Score global de qualite du dataset",
+            "detail": "Score global calculé par l'agent EDA",
         },
     ]
 
 
 @router.get("/diagnostic")
 def run_diagnostic():
-    checks = []
+    checks: list[dict[str, Any]] = []
+
+    # 1. Connexion base de données
+    machine_count = sensor_count = alert_count = 0
     try:
         with db_session() as conn:
             conn.execute("SELECT 1")
@@ -117,49 +123,103 @@ def run_diagnostic():
             alert_count = conn.execute(
                 "SELECT COUNT(*) AS c FROM alerte WHERE timestamp_alerte >= datetime('now', '-7 days')"
             ).fetchone()[0]
-        checks.append(
-            {
-                "id": "db",
-                "name": "Database connection",
-                "status": "pass",
-                "detail": "OK",
-            }
-        )
+        checks.append({
+            "id": "db",
+            "name": "Connexion base de données",
+            "description": "Vérifie la connexion à la base SQLite principale",
+            "status": "pass",
+            "detail": "Connexion OK",
+        })
     except Exception as exc:
-        checks.append(
-            {
-                "id": "db",
-                "name": "Database connection",
-                "status": "fail",
-                "detail": str(exc),
-            }
-        )
+        checks.append({
+            "id": "db",
+            "name": "Connexion base de données",
+            "description": "Vérifie la connexion à la base SQLite principale",
+            "status": "fail",
+            "detail": str(exc),
+        })
         return {"status": "done", "checks": checks}
 
-    checks.append(
-        {
-            "id": "machines",
-            "name": "Machines configured",
-            "status": "pass" if machine_count > 0 else "warning",
-            "detail": f"{machine_count} machines in catalog",
-        }
-    )
-    checks.append(
-        {
-            "id": "sensors",
-            "name": "Active sensors",
-            "status": "pass" if sensor_count > 0 else "warning",
-            "detail": f"{sensor_count} active sensors",
-        }
-    )
-    checks.append(
-        {
-            "id": "alerts",
-            "name": "Recent alerts",
-            "status": "warning" if alert_count > 0 else "pass",
-            "detail": f"{alert_count} alerts in last 7 days",
-        }
-    )
+    # 2. Machines référencées
+    checks.append({
+        "id": "machines",
+        "name": "Machines référencées",
+        "description": "Catalogue des machines disponibles",
+        "status": "pass" if machine_count > 0 else "warning",
+        "detail": f"{machine_count} machine(s) dans le catalogue",
+    })
+
+    # 3. Capteurs actifs
+    checks.append({
+        "id": "sensors",
+        "name": "Capteurs actifs",
+        "description": "Capteurs IoT au statut 'actif'",
+        "status": "pass" if sensor_count > 0 else "warning",
+        "detail": f"{sensor_count} capteur(s) actif(s)",
+    })
+
+    # 4. Alertes récentes (informatif, pas une erreur)
+    checks.append({
+        "id": "alerts",
+        "name": "Alertes des 7 derniers jours",
+        "description": "Volume d'alertes récentes (informatif)",
+        "status": "pass",
+        "detail": f"{alert_count} alerte(s) sur 7 jours",
+    })
+
+    # 5. Registre MLflow
+    try:
+        import mlflow
+        from mlflow.tracking import MlflowClient
+
+        if sys.platform == "win32":
+            mlflow.set_tracking_uri(f"file:///{MLFLOW_DIR.resolve().as_posix()}")
+        else:
+            mlflow.set_tracking_uri(f"file://{MLFLOW_DIR.resolve()}")
+
+        client = MlflowClient()
+        registered = client.search_registered_models()
+        registered_count = sum(1 for r in registered if r.name.startswith("maintenance_"))
+        if registered_count > 0:
+            checks.append({
+                "id": "mlflow",
+                "name": "Registre MLflow",
+                "description": "Modèles enregistrés disponibles pour les prédictions",
+                "status": "pass",
+                "detail": f"{registered_count} modèle(s) enregistré(s)",
+            })
+        else:
+            checks.append({
+                "id": "mlflow",
+                "name": "Registre MLflow",
+                "description": "Modèles enregistrés disponibles pour les prédictions",
+                "status": "warning",
+                "detail": "Aucun modèle enregistré — lance un entraînement",
+            })
+    except Exception as exc:
+        checks.append({
+            "id": "mlflow",
+            "name": "Registre MLflow",
+            "description": "Modèles enregistrés disponibles pour les prédictions",
+            "status": "fail",
+            "detail": f"MLflow inaccessible : {exc}",
+        })
+
+    # 6. Répertoire d'uploads
+    upload_count = 0
+    if UPLOAD_DIR.exists():
+        try:
+            upload_count = sum(1 for _ in UPLOAD_DIR.iterdir() if _.is_file())
+        except OSError:
+            pass
+    checks.append({
+        "id": "uploads",
+        "name": "Répertoire d'uploads",
+        "description": "Fichiers déposés par les utilisateurs",
+        "status": "pass" if UPLOAD_DIR.exists() else "warning",
+        "detail": f"{upload_count} fichier(s) dans {UPLOAD_DIR.name}/" if UPLOAD_DIR.exists() else "Répertoire absent",
+    })
+
     return {"status": "done", "checks": checks}
 
 

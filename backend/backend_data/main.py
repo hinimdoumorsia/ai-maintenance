@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from db.database import init_db
-from api import dashboard, donnees, admin, maintenance, chatbot, auth, predictions, tools
+from api import dashboard, donnees, admin, maintenance, chatbot, auth, predictions, tools, agents
 from api.chatbot import init_chatbot
 
 app = FastAPI(
@@ -48,6 +48,7 @@ app.include_router(chatbot.router,      prefix="/api/chatbot",      tags=["Chatb
 app.include_router(auth.router,         prefix="/api/auth",         tags=["Authentification"])
 app.include_router(predictions.router,  prefix="/api/predictions",  tags=["Predictions"])
 app.include_router(tools.router,        prefix="/api/tools",        tags=["Tools"])
+app.include_router(agents.router,       prefix="/api/agents",       tags=["Agents"])
 
 
 @app.get("/")

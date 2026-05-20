@@ -2,15 +2,8 @@
 import React from 'react';
 import { ModelRegistry } from '../types';
 
-const defaultRegistry: ModelRegistry[] = [
-  { id: '1', name: 'LSTM_001', version: 'Version 23 version: 3', versionNumber: 3, icon: 'neural' },
-  { id: '2', name: 'Random Forest_002', version: 'Version 23 version: 3', versionNumber: 3, icon: 'forest' },
-  { id: '3', name: 'Random Forest_002', version: 'Version 23 version: 2', versionNumber: 2, icon: 'forest' },
-  { id: '4', name: 'XGBoost_003', version: 'Version 20 version: 1', versionNumber: 1, icon: 'boost' },
-];
-
 interface RegistreModelesProps {
-  registry?: ModelRegistry[];
+  registry: ModelRegistry[];
 }
 
 const NeuralIcon = () => (
@@ -36,39 +29,39 @@ const BoostIcon = () => (
 
 const iconMap = { neural: <NeuralIcon />, forest: <ForestIcon />, boost: <BoostIcon /> };
 
-const RegistreModeles: React.FC<RegistreModelesProps> = ({ registry = defaultRegistry }) => (
+const RegistreModeles: React.FC<RegistreModelesProps> = ({ registry }) => (
   <div className="card">
     <div className="card-header">
       <div className="card-title-group">
         <div style={{ width: 4, height: 20, background: 'var(--accent-blue)', borderRadius: 2 }} />
         <div>
           <div className="card-title">Registre des Modèles</div>
+          <div className="card-subtitle">Versions MLflow enregistrées</div>
         </div>
       </div>
     </div>
 
-    <div className="registry-list">
-      {registry.map((item) => (
-        <div className="registry-item" key={item.id}>
-          <div className="registry-item-left">
-            <div className={`registry-icon ${item.icon}`}>
-              {iconMap[item.icon]}
-            </div>
-            <div>
-              <div className="registry-name">{item.name}</div>
-              <div className="registry-version">{item.version}</div>
+    {registry.length === 0 ? (
+      <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+        Aucun modèle dans le registre.
+      </div>
+    ) : (
+      <div className="registry-list">
+        {registry.map((item) => (
+          <div className="registry-item" key={item.id}>
+            <div className="registry-item-left">
+              <div className={`registry-icon ${item.icon}`}>
+                {iconMap[item.icon]}
+              </div>
+              <div>
+                <div className="registry-name">{item.name}</div>
+                <div className="registry-version">{item.version}</div>
+              </div>
             </div>
           </div>
-          <button className="registry-menu-btn">
-            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-              <circle cx="12" cy="5" r="1.5" />
-              <circle cx="12" cy="12" r="1.5" />
-              <circle cx="12" cy="19" r="1.5" />
-            </svg>
-          </button>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    )}
   </div>
 );
 

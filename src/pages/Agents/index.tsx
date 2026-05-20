@@ -1,10 +1,11 @@
-import React from "react";
-import { Bot } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from "react";
+import { Bot } from "lucide-react";
 import AppLayout from "../../components/AppLayout";
 import FluxCard from "./components/FluxCard";
 import CompatibilityCard from "./components/CompatibilityCard";
 import DelegationCard from "./components/DelegationCard";
 import PerformanceCard from "./components/PerformanceCard";
+import { listAgents, BackendAgent } from "../../services/api";
 import type {
   CompatibilityEntry,
   Agent,
@@ -12,74 +13,39 @@ import type {
   PerformanceBarPoint,
 } from "./types";
 
-// ─── Static Data ─────────────────────────────────────────────────────────────
+// Fallback statique (avant chargement / si le backend ne répond pas)
+const fallbackAgents: Agent[] = [
+  {
+    id: "loading",
+    name: "Chargement…",
+    role: "—",
+    description: "Récupération de la liste des agents…",
+    status: "En Attente",
+  },
+];
+
 const compatData: CompatibilityEntry[] = [
   {
     id: "1",
-    incomentId: "source_01",
+    incomentId: "dataset_001",
     status: "Compatible",
-    actionLabel: "sent à modèle",
-    message: "Modèle LSTM nécessite format X",
+    actionLabel: "transmis au modèle",
+    message: "Format CSV reconnu, colonnes alignées",
   },
   {
     id: "2",
-    incomentId: "source_02",
+    incomentId: "dataset_002",
     status: "Alert",
     actionLabel: "délégué",
-    message: "Modèle LSTM nécessite format X",
+    message: "Colonnes manquantes — imputation appliquée",
   },
   {
     id: "3",
-    incomentId: "source_03",
+    incomentId: "dataset_003",
     status: "Non Compatible",
     actionLabel: "rejeté",
-    message: "Modèle LSTM nécessite format X",
+    message: "Schéma incompatible avec le modèle sélectionné",
   },
-  {
-    id: "4",
-    incomentId: "source_04",
-    status: "Non Compatible",
-    actionLabel: "rejeté",
-    message: "Modèle LSTM nécessite format X",
-  },
-];
-
-const agentData: Agent[] = [
-  {
-    id: "adc",
-    name: "Agent_Data_Cleaner",
-    role: "Nettoyage",
-    description: "Rôle - Nettoyage - Actuall data re analyser",
-    status: "Occupé",
-    children: [
-      {
-        id: "afe",
-        name: "Agent_Feature_Engineer",
-        role: "Engineer",
-        description: "Role - Engineer - actuall - feature engineer",
-        status: "Disponible",
-      },
-      {
-        id: "apf1",
-        name: "Agent_Prediction_Finalizer",
-        role: "Prediction",
-        description: "Role - Prediction - nowectable rand feature engineer",
-        status: "Disponible",
-      },
-      {
-        id: "apf2",
-        name: "Agent_Prediction_Finalizer",
-        role: "Prediction",
-        description: "Role - Prediction - actuall predicton finalizer",
-        status: "Disponible",
-      },
-    ],
-  },
-];
-
-const toolData: ToolPerformance[] = [
-  { name: "Data Validation",  execution: "9.3 ms",  temps: "0.0%", success: "99.2%", f1Score: 0.92, recall: 0.78 },
-  { name: "Anomaly Detection", execution: "13.5 ms", temps: "0.0%", success: "99.2%", f1Score: 0.88, recall: 0.90 },
 ];
 
 const chartData: PerformanceBarPoint[] = [
@@ -89,8 +55,90 @@ const chartData: PerformanceBarPoint[] = [
   { label: 40, f1Score: 0.89, recall: 0.80 },
 ];
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+function backendStatusToUi(status: BackendAgent["status"]): Agent["status"] {
+  return status;
+}
+
+function backendAgentToUi(a: BackendAgent): Agent {
+  return {
+    id: a.id,
+    name: a.name,
+    role: a.role,
+    description: a.description,
+    status: backendStatusToUi(a.status),
+  };
+}
+
+function toolsFromAgents(agents: BackendAgent[]): ToolPerformance[] {
+  // Une ligne par outil agrégeant les jobs traités.
+  const flat = agents.flatMap((a) =>
+    a.tools.map((t) => ({
+      name: t.name,
+      execution: "—",
+      temps: "—",
+      success: a.status === "Disponible" ? "100%" : "—",
+      f1Score: 0,
+      recall: 0,
+    }))
+  );
+  // Dédup par nom
+  const seen = new Set<string>();
+  return flat.filter((t) => {
+    if (seen.has(t.name)) return false;
+    seen.add(t.name);
+    return true;
+  });
+}
+
 const AgentsPage: React.FC = () => {
+  const [backendAgents, setBackendAgents] = useState<BackendAgent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [fluxOnline, setFluxOnline] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const load = async () => {
+      try {
+        const data = await listAgents();
+        if (!mounted) return;
+        setBackendAgents(data.agents);
+        setFluxOnline(data.summary.offline < data.summary.total);
+        setError(null);
+      } catch (e: any) {
+        if (!mounted) return;
+        setError(e?.message || "Impossible de joindre le registre des agents");
+        setFluxOnline(false);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    load();
+    const id = window.setInterval(load, 15000);
+    return () => {
+      mounted = false;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  const uiAgents: Agent[] = useMemo(() => {
+    if (loading && backendAgents.length === 0) return fallbackAgents;
+    if (backendAgents.length === 0) {
+      return [{
+        id: "none",
+        name: "Aucun agent enregistré",
+        role: "—",
+        description: error || "Le backend n'a renvoyé aucun agent.",
+        status: "Hors Ligne",
+      }];
+    }
+    return backendAgents.map(backendAgentToUi);
+  }, [loading, backendAgents, error]);
+
+  const tools: ToolPerformance[] = useMemo(() => toolsFromAgents(backendAgents), [backendAgents]);
+
   return (
     <AppLayout
       title="Agents"
@@ -99,10 +147,15 @@ const AgentsPage: React.FC = () => {
       notifCount={1}
     >
       <div className="flex flex-col gap-6">
-        <FluxCard status="En Ligne" />
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+            {error}
+          </div>
+        )}
+        <FluxCard status={fluxOnline ? "En Ligne" : "Hors Ligne"} />
         <CompatibilityCard entries={compatData} />
-        <DelegationCard agents={agentData} />
-        <PerformanceCard tools={toolData} chartData={chartData} />
+        <DelegationCard agents={uiAgents} />
+        <PerformanceCard tools={tools} chartData={chartData} />
       </div>
     </AppLayout>
   );

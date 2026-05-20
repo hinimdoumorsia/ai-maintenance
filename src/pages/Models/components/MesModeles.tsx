@@ -2,17 +2,14 @@
 import React from 'react';
 import { Model } from '../types';
 
-const defaultModels: Model[] = [
-  { id: 'LSTM_001', type: 'LSTM', status: 'Deployed', performance: 0.87, createdAt: '2024-01-15' },
-  { id: 'LSTM_002', type: 'XGBoost', status: 'In-Training', performance: 0.82, createdAt: '2024-01-15' },
-  { id: 'XGBoost_003', type: 'XGBoost', status: 'Archived', performance: 0.82, createdAt: '2024-01-15' },
-  { id: 'XGBoost_003', type: 'LSTM', status: 'Archived', performance: 0.82, createdAt: '2024-01-15' },
-];
-
 interface MesModelesProps {
-  models?: Model[];
+  models: Model[];
   loading?: boolean;
   error?: string | null;
+  onView?: (model: Model) => void;
+  onRetrain?: (model: Model) => void;
+  onDeploy?: (model: Model) => void;
+  onUndeploy?: (model: Model) => void;
 }
 
 const statusClass: Record<string, string> = {
@@ -22,9 +19,13 @@ const statusClass: Record<string, string> = {
 };
 
 const MesModeles: React.FC<MesModelesProps> = ({
-  models = defaultModels,
+  models,
   loading = false,
   error = null,
+  onView,
+  onRetrain,
+  onDeploy,
+  onUndeploy,
 }) => (
   <div className="card">
     <div className="card-header">
@@ -37,70 +38,69 @@ const MesModeles: React.FC<MesModelesProps> = ({
         </div>
         <div>
           <div className="card-title">Mes Modèles</div>
-          <div className="card-subtitle">Modèle view activité les modèles</div>
+          <div className="card-subtitle">Modèles enregistrés dans MLflow</div>
         </div>
       </div>
-      <button className="apercu-btn">
-        Aperçu
-        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
     </div>
 
-    {loading && <div style={{ marginBottom: 12, color: 'var(--text-muted)', fontSize: 12 }}>Chargement des modèles depuis le backend...</div>}
-    {error && <div style={{ marginBottom: 12, color: '#b91c1c', fontSize: 12 }}>{error}</div>}
+    {loading && (
+      <div style={{ marginBottom: 12, color: 'var(--text-muted)', fontSize: 12 }}>
+        Chargement du registre MLflow…
+      </div>
+    )}
+    {error && (
+      <div style={{ marginBottom: 12, color: '#b91c1c', fontSize: 12 }}>{error}</div>
+    )}
+    {!loading && !error && models.length === 0 && (
+      <div style={{ marginBottom: 12, color: 'var(--text-muted)', fontSize: 12 }}>
+        Aucun modèle disponible. Lance d'abord un entraînement.
+      </div>
+    )}
 
-    <table className="models-table">
-      <thead>
-        <tr>
-          <th>Model ID</th>
-          <th>Type</th>
-          <th>Status</th>
-          <th>Performance</th>
-          <th>Création</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {models.map((m, i) => (
-          <tr key={i}>
-            <td><span className="model-id">{m.id}</span></td>
-            <td>{m.type}</td>
-            <td>
-              <span className={`status-badge ${statusClass[m.status]}`}>{m.status}</span>
-            </td>
-            <td>{(m.performance * 100).toFixed(0)}%</td>
-            <td>{m.createdAt}</td>
-            <td>
-              <div className="action-links">
-                {m.status === 'Deployed' && (
-                  <>
-                    <button className="action-link">View</button>
-                    <button className="action-link">Retrain</button>
-                  </>
-                )}
-                {m.status === 'In-Training' && (
-                  <>
-                    <button className="action-link">View</button>
-                    <button className="action-link">Retrain</button>
-                  </>
-                )}
-                {m.status === 'Archived' && i === 2 && (
-                  <>
-                    <button className="action-link orange">Deploy</button>
-                    <button className="action-link red">Undeploy</button>
-                  </>
-                )}
-                {m.status === 'Archived' && i === 3 && (
-                  <button className="action-link">View</button>
-                )}
-              </div>
-            </td>
+    {models.length > 0 && (
+      <table className="models-table">
+        <thead>
+          <tr>
+            <th>Model ID</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Score</th>
+            <th>Dernière maj</th>
+            <th>Actions</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {models.map((m) => (
+            <tr key={m.id}>
+              <td><span className="model-id">{m.id}</span></td>
+              <td>{m.type}</td>
+              <td>
+                <span className={`status-badge ${statusClass[m.status]}`}>{m.status}</span>
+              </td>
+              <td>{m.performance > 0 ? `${(m.performance * 100).toFixed(0)}%` : '—'}</td>
+              <td>{m.createdAt}</td>
+              <td>
+                <div className="action-links">
+                  <button className="action-link" onClick={() => onView?.(m)}>View</button>
+                  {m.status === 'Deployed' && (
+                    <>
+                      <button className="action-link" onClick={() => onRetrain?.(m)}>Retrain</button>
+                      <button className="action-link red" onClick={() => onUndeploy?.(m)}>Undeploy</button>
+                    </>
+                  )}
+                  {m.status === 'In-Training' && (
+                    <button className="action-link orange" onClick={() => onDeploy?.(m)}>Promote</button>
+                  )}
+                  {m.status === 'Archived' && (
+                    <button className="action-link orange" onClick={() => onDeploy?.(m)}>Deploy</button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
   </div>
 );
 

@@ -205,6 +205,69 @@ export async function streamPredictions(
   return () => es.close();
 }
 
+export interface AvailableModelMetrics {
+  precision: number | null;
+  recall: number | null;
+  f1: number | null;
+  r2: number | null;
+  rmse: number | null;
+}
+
+export interface AvailableModel {
+  id: string;
+  name: string;
+  description: string;
+  registered_name: string;
+  available: boolean;
+  versions: number;
+  current_version: string | null;
+  current_stage: string | null;
+  source: "production" | "staging" | "latest" | null;
+  last_updated: number | null;
+  score: number | null;
+  task: "classification" | "regression" | null;
+  metrics: AvailableModelMetrics;
+}
+
+export async function listAvailableModels(
+  includeUnavailable: boolean = false,
+): Promise<{ models: AvailableModel[]; warning?: string }> {
+  const params = includeUnavailable ? "?include_unavailable=true" : "";
+  const response = await fetch(`${API_BASE_URL}/api/predictions/models${params}`);
+  if (!response.ok) {
+    throw new Error(`Failed to list models: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export type ModelStage = "Production" | "Staging" | "Archived" | "None";
+
+export async function promoteModel(
+  modelId: string,
+  stage: ModelStage,
+  version?: string,
+): Promise<{ status: string; model_id: string; version: string; stage: ModelStage }> {
+  const params = new URLSearchParams({ stage });
+  if (version) params.set("version", version);
+  const response = await fetch(
+    `${API_BASE_URL}/api/predictions/models/${encodeURIComponent(modelId)}/promote?${params.toString()}`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Promotion failed (${response.status}): ${text}`);
+  }
+  return response.json();
+}
+
+export async function getPredictionResults(jobId: string): Promise<{ job_id: string; status: string; result: any }> {
+  const response = await fetch(`${API_BASE_URL}/api/predictions/results/${jobId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch prediction results: ${response.statusText}`);
+  }
+  return response.json();
+}
+
 export async function exportPredictions(jobId: string, format: string): Promise<Blob> {
   const response = await fetch(
     `${API_BASE_URL}/api/predictions/export?job_id=${encodeURIComponent(jobId)}&format=${encodeURIComponent(format)}`
@@ -236,6 +299,43 @@ export async function getToolsDataQuality(): Promise<{ metrics: any[] }> {
   const response = await fetch(`${API_BASE_URL}/api/tools/data-quality`);
   if (!response.ok) {
     throw new Error(`Data quality failed: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+// ---- Agents API ----------------------------------------------------------
+export interface AgentTool {
+  name: string;
+  kind: string;
+}
+
+export interface BackendAgent {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  status: "Disponible" | "Occupé" | "Hors Ligne" | "En Attente";
+  module: string;
+  jobs_running: number;
+  jobs_done: number;
+  tools: AgentTool[];
+}
+
+export interface AgentsRegistry {
+  summary: {
+    total: number;
+    available: number;
+    busy: number;
+    offline: number;
+    generated_at: string;
+  };
+  agents: BackendAgent[];
+}
+
+export async function listAgents(): Promise<AgentsRegistry> {
+  const response = await fetch(`${API_BASE_URL}/api/agents/registry`);
+  if (!response.ok) {
+    throw new Error(`Agents registry failed: ${response.statusText}`);
   }
   return response.json();
 }

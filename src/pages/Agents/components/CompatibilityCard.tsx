@@ -29,7 +29,7 @@ const CompatibilityCard: React.FC<Props> = ({ entries }) => {
           </div>
           <div>
             <div className="text-sm font-semibold text-gray-900">Statut de Compatibilité</div>
-            <div className="text-xs text-gray-400">Compatibilités status en sous des données</div>
+            <div className="text-xs text-gray-400">Vérification des datasets entrants par l'agent</div>
           </div>
         </div>
       </div>
@@ -37,7 +37,7 @@ const CompatibilityCard: React.FC<Props> = ({ entries }) => {
       {/* Table */}
       <div>
         <div className="grid grid-cols-[1fr_2fr] p-3 bg-gray-50 border-b border-gray-100">
-          <span className="text-xs font-bold text-gray-500 uppercase">Incoment ID</span>
+          <span className="text-xs font-bold text-gray-500 uppercase">Dataset ID</span>
           <span className="text-xs font-bold text-gray-500 uppercase">Statut</span>
         </div>
         {entries.map((entry) => (

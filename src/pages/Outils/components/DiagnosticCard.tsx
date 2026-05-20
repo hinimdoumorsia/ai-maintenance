@@ -3,54 +3,39 @@ import { Play, CheckCircle, XCircle, AlertTriangle, Loader, Stethoscope } from "
 import { DiagnosticCheck, DiagnosticStatus } from "../types";
 import { getToolsDiagnostic } from "../../../services/api";
 
-const INITIAL_CHECKS: DiagnosticCheck[] = [
-  { id: "c1", name: "Connexion base de données",      description: "Vérifie la connexion à la base de données principale",   status: "pending" },
-  { id: "c2", name: "Pipeline de prédiction",         description: "Vérifie que le pipeline ML est opérationnel",            status: "pending" },
-  { id: "c3", name: "Intégrité des données capteurs", description: "Contrôle la cohérence et la fraîcheur des données",      status: "pending" },
-  { id: "c4", name: "Modèles chargés en mémoire",     description: "Vérifie que tous les modèles actifs sont disponibles",   status: "pending" },
-  { id: "c5", name: "API de collecte",                description: "Vérifie la disponibilité des APIs de collecte de données",status: "pending" },
-];
-
-const STATUS_AFTER: DiagnosticCheck["status"][] = ["pass", "pass", "warning", "pass", "fail"];
-
 const DiagnosticCard: React.FC = () => {
   const [status, setStatus] = useState<DiagnosticStatus>("idle");
-  const [checks, setChecks] = useState<DiagnosticCheck[]>(INITIAL_CHECKS);
-  const [currentIdx, setCurrentIdx] = useState(-1);
+  const [checks, setChecks] = useState<DiagnosticCheck[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const runDiagnostic = async () => {
     setStatus("running");
-    setCurrentIdx(0);
-    const updated = INITIAL_CHECKS.map((c) => ({ ...c, status: "pending" as const }));
-    setChecks(updated);
+    setErrorMsg(null);
+    setChecks([]);
     try {
       const data = await getToolsDiagnostic();
-      const next = (data.checks || []).map((c: any) => ({
-        id: String(c.id || c.name),
-        name: String(c.name || "Check"),
-        description: c.description || "",
-        status: c.status || "pending",
+      const next: DiagnosticCheck[] = (data.checks || []).map((c: any) => ({
+        id: String(c.id ?? c.name ?? Math.random()),
+        name: String(c.name ?? "Check"),
+        description: c.description ?? "",
+        status: c.status ?? "pending",
         detail: c.detail,
       }));
-      setChecks(next.length ? next : updated);
+      setChecks(next);
       setStatus("success");
-    } catch (e) {
+    } catch (e: any) {
       setStatus("error");
-      setChecks(updated.map((c) => ({ ...c, status: "fail", detail: "Erreur diagnostic" })));
-    } finally {
-      setCurrentIdx(-1);
+      setErrorMsg(e?.message || "Impossible de joindre le backend");
     }
   };
 
   const reset = () => {
     setStatus("idle");
-    setChecks(INITIAL_CHECKS);
-    setCurrentIdx(-1);
+    setChecks([]);
+    setErrorMsg(null);
   };
 
-  const icon = (check: DiagnosticCheck, i: number) => {
-    if (status === "running" && i === currentIdx)
-      return <Loader size={16} className="diag-running" style={{ color: "#f97316" }} />;
+  const icon = (check: DiagnosticCheck) => {
     if (check.status === "pass")    return <CheckCircle  size={16} style={{ color: "#16a34a" }} />;
     if (check.status === "fail")    return <XCircle      size={16} style={{ color: "#dc2626" }} />;
     if (check.status === "warning") return <AlertTriangle size={16} style={{ color: "#f59e0b" }} />;
@@ -68,30 +53,57 @@ const DiagnosticCard: React.FC = () => {
           <div className="outil-card-icon icon-orange"><Stethoscope size={16} /></div>
           <div>
             <div className="outil-card-title">Diagnostic Système</div>
-            <div className="outil-card-sub">Vérification automatique des composants</div>
+            <div className="outil-card-sub">Vérification des composants backend</div>
           </div>
         </div>
-        {status === "success" && (
+        {status === "success" && checks.length > 0 && (
           <span className={`outil-badge ${failCount > 0 ? "outil-badge-red" : warningCount > 0 ? "outil-badge-orange" : "outil-badge-green"}`}>
             {passCount} OK · {warningCount} avert. · {failCount} err.
           </span>
         )}
       </div>
 
-      <div className="diagnostic-checks">
-        {checks.map((check, i) => (
-          <div key={check.id} className="diag-item">
-            <div className="diag-status-icon">{icon(check, i)}</div>
-            <div className="diag-info">
-              <div className="diag-name">{check.name}</div>
-              {check.detail
-                ? <div className="diag-detail">{check.detail}</div>
-                : <div className="diag-detail" style={{ color: "#c4c9d4" }}>{check.description}</div>
-              }
+      {status === "idle" && (
+        <div style={{ padding: "24px 12px", textAlign: "center", color: "#94a3b8", fontStyle: "italic", fontSize: 13 }}>
+          Cliquez sur « Lancer le diagnostic » pour vérifier l'état des composants.
+        </div>
+      )}
+
+      {status === "running" && (
+        <div style={{ padding: "24px 12px", textAlign: "center", color: "#64748b", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <Loader size={16} className="diag-running" style={{ color: "#f97316" }} />
+          Diagnostic en cours…
+        </div>
+      )}
+
+      {status === "error" && (
+        <div style={{ padding: "12px", color: "#b91c1c", fontSize: 13 }}>
+          ❌ {errorMsg ?? "Erreur durant le diagnostic"}
+        </div>
+      )}
+
+      {status === "success" && checks.length === 0 && (
+        <div style={{ padding: "24px 12px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+          Aucun composant à vérifier — le backend n'a renvoyé aucun check.
+        </div>
+      )}
+
+      {checks.length > 0 && (
+        <div className="diagnostic-checks">
+          {checks.map((check) => (
+            <div key={check.id} className="diag-item">
+              <div className="diag-status-icon">{icon(check)}</div>
+              <div className="diag-info">
+                <div className="diag-name">{check.name}</div>
+                {check.detail
+                  ? <div className="diag-detail">{check.detail}</div>
+                  : <div className="diag-detail" style={{ color: "#c4c9d4" }}>{check.description}</div>
+                }
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       <div className="diag-actions">
         <button className="btn-primary" onClick={runDiagnostic} disabled={status === "running"}>

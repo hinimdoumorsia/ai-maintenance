@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { Download, FileText, BarChart2, Wrench, TrendingUp, Database } from "lucide-react";
-import { ExportOption, ExportFormat } from "../types";
+import React, { useEffect, useState } from "react";
+import { Download, FileText } from "lucide-react";
+import { ExportOption } from "../types";
 import { exportToolsData } from "../../../services/api";
 
 const EXPORT_OPTIONS: ExportOption[] = [
@@ -10,20 +10,37 @@ const EXPORT_OPTIONS: ExportOption[] = [
   { id: "parquet", label: "Dataset complet",   format: "Parquet", description: "Format optimisé pour le ML",      icon: "database" },
 ];
 
-const PERIOD_OPTIONS = ["Aujourd'hui", "7 derniers jours", "30 derniers jours", "3 derniers mois", "Personnalisé"];
+const PERIOD_OPTIONS = ["Aujourd'hui", "7 derniers jours", "30 derniers jours", "3 derniers mois"];
+
+type FeedbackKind = "success" | "error";
 
 const ExportCard: React.FC = () => {
   const [selected, setSelected] = useState<string>("csv");
   const [period, setPeriod]     = useState<string>("7 derniers jours");
   const [exporting, setExporting] = useState(false);
+  const [feedback, setFeedback] = useState<{ kind: FeedbackKind; message: string } | null>(null);
+
+  // Auto-clear feedback après 5s
+  useEffect(() => {
+    if (!feedback) return;
+    const id = window.setTimeout(() => setFeedback(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [feedback]);
 
   const handleExport = async () => {
     setExporting(true);
+    setFeedback(null);
     try {
       const res = await exportToolsData({ format: selected, period });
       if (res.download_url) {
         window.open(res.download_url, "_blank");
+        const fmt = EXPORT_OPTIONS.find((o) => o.id === selected)?.format ?? selected;
+        setFeedback({ kind: "success", message: `Export ${fmt} démarré dans un nouvel onglet.` });
+      } else {
+        setFeedback({ kind: "error", message: "Le backend n'a pas renvoyé d'URL de téléchargement." });
       }
+    } catch (e: any) {
+      setFeedback({ kind: "error", message: e?.message || "Export échoué" });
     } finally {
       setExporting(false);
     }
@@ -36,7 +53,7 @@ const ExportCard: React.FC = () => {
           <div className="outil-card-icon icon-blue"><Download size={16} /></div>
           <div>
             <div className="outil-card-title">Export de Données</div>
-            <div className="outil-card-sub">Exporter vos données dans différents formats</div>
+            <div className="outil-card-sub">Exporter les mesures depuis la base de données</div>
           </div>
         </div>
       </div>
@@ -60,6 +77,7 @@ const ExportCard: React.FC = () => {
           {EXPORT_OPTIONS.map((opt) => (
             <button
               key={opt.id}
+              type="button"
               className={`export-option ${selected === opt.id ? "selected" : ""}`}
               onClick={() => setSelected(opt.id)}
             >
@@ -77,6 +95,17 @@ const ExportCard: React.FC = () => {
         <FileText size={14} />
         {exporting ? "Export en cours…" : `Exporter en ${EXPORT_OPTIONS.find((o) => o.id === selected)?.format ?? ""}`}
       </button>
+
+      {feedback && (
+        <div style={{
+          marginTop: 10, padding: "8px 12px", borderRadius: 8, fontSize: 12,
+          background: feedback.kind === "success" ? "#ecfdf5" : "#fef2f2",
+          color: feedback.kind === "success" ? "#065f46" : "#b91c1c",
+          border: `1px solid ${feedback.kind === "success" ? "#a7f3d0" : "#fecaca"}`,
+        }}>
+          {feedback.kind === "success" ? "✅" : "❌"} {feedback.message}
+        </div>
+      )}
     </div>
   );
 };

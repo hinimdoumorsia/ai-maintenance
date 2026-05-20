@@ -1,5 +1,6 @@
 export type ModelStatus = 'Deployed' | 'In-Training' | 'Archived';
-export type ModelType = 'LSTM' | 'XGBoost' | 'Random Forest';
+// ModelType reste un string libre — on accepte tout nom renvoyé par le backend MLflow
+export type ModelType = string;
 
 export interface Model {
   id: string;
@@ -14,12 +15,6 @@ export interface PerformanceData {
   f1Score: number;
   precision: number;
   recall: number;
-}
-
-export interface DeployedModel {
-  id: string;
-  deployedAt: string;
-  accuracyHistory: { epoch: number; loss: number; recall: number }[];
 }
 
 export interface ModelRegistry {
