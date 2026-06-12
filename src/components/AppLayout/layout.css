@@ -186,6 +186,20 @@
 
 .al-nav-icon { flex-shrink: 0; }
 
+.al-nav-badge {
+  background: #f97316;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  min-width: 16px;
+  text-align: center;
+  line-height: 15px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .al-nav-label {
   white-space: nowrap;
   overflow: hidden;

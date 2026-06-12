@@ -25,9 +25,9 @@ import {
 import { API, DatasetFull, DatasetMeta, EDAFrame, useDatasets } from '../../../contexts/DatasetContext';
 
 /* ─── Helpers ────────────────────────────────────────────── */
-const ACCEPTED = '.csv,.xlsx,.xls,.txt,.tsv,.arff,.zip,.data,.dat';
+const ACCEPTED = '.csv,.xlsx,.xls,.txt,.tsv,.arff,.zip,.data,.dat,.mat,.npz';
 
-const FORMATS = ['CSV', 'XLSX', 'XLS', 'TXT', 'ARFF', 'ZIP', 'DAT'];
+const FORMATS = ['CSV', 'XLSX', 'TXT', 'ARFF', 'ZIP', 'MAT', 'NPZ'];
 
 const TYPE_LABELS: Record<string, string> = {
   vibration:   'Vibratoire',
@@ -42,11 +42,11 @@ const TYPE_COLORS: Record<string, string> = {
   kpi:         '#0891b2',
   maintenance: '#b45309',
   machine:     '#16a34a',
-  generic:     '#6b7280',
+  generic:     'var(--theme-text-muted)',
 };
 
 const STATUS_CONFIG = {
-  uploaded:   { label: 'En attente',   color: '#6b7280', bg: '#f3f4f6',              icon: Clock },
+  uploaded:   { label: 'En attente',   color: 'var(--theme-text-muted)', bg: 'var(--theme-bg-hover)', icon: Clock },
   processing: { label: 'Traitement…',  color: '#d97706', bg: 'rgba(251,191,36,.12)', icon: Loader2 },
   processed:  { label: 'Prêt',         color: '#16a34a', bg: 'rgba(22,163,74,.10)',  icon: CheckCircle2 },
   error:      { label: 'Erreur',       color: '#dc2626', bg: 'rgba(220,38,38,.09)',  icon: AlertTriangle },
@@ -67,9 +67,12 @@ const UploadZone: React.FC<UploadZoneProps> = ({ onUploaded }) => {
   const { refresh, pollUntilDone } = useDatasets();
   const [dragging,    setDragging]    = useState(false);
   const [file,        setFile]        = useState<File | null>(null);
-  const [name,        setName]        = useState('');
-  const [description, setDescription] = useState('');
-  const [mode,        setMode]        = useState<'exploratory' | 'company'>('exploratory');
+  const [name,              setName]              = useState('');
+  const [description,       setDescription]       = useState('');
+  const [mode,              setMode]              = useState<'exploratory' | 'company'>('exploratory');
+  const [vitesseRpm,        setVitesseRpm]        = useState('');
+  const [nbPairesPoles,     setNbPairesPoles]     = useState('');
+  const [nbDentsEngrenage,  setNbDentsEngrenage]  = useState('');
   const [uploading,   setUploading]   = useState(false);
   const [error,       setError]       = useState('');
   const [success,     setSuccess]     = useState('');
@@ -96,6 +99,11 @@ const UploadZone: React.FC<UploadZoneProps> = ({ onUploaded }) => {
     form.append('name', name.trim());
     form.append('description', description);
     form.append('mode', mode);
+    if (vitesseRpm)       form.append('vitesse_rpm',        vitesseRpm);
+    if (nbPairesPoles)    form.append('nb_paires_poles',    nbPairesPoles);
+    if (nbDentsEngrenage) form.append('nb_dents_engrenage', nbDentsEngrenage);
+    const _session = JSON.parse(localStorage.getItem('ai-maint-session') || '{}');
+    form.append('user_id', String(_session.id || 0));
     try {
       const res = await fetch(`${API}/api/donnees/upload`, { method: 'POST', body: form });
       if (!res.ok) {
@@ -105,6 +113,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({ onUploaded }) => {
         const data = await res.json();
         setSuccess(`Dataset "${name}" uploadé — analyse EDA en cours…`);
         setFile(null); setName(''); setDescription('');
+        setVitesseRpm(''); setNbPairesPoles(''); setNbDentsEngrenage('');
         await refresh();
         pollUntilDone(data.dataset_id);
         onUploaded(data.dataset_id);
@@ -144,7 +153,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({ onUploaded }) => {
           </div>
         ) : (
           <>
-            <Upload size={32} color="#d1d5db" />
+            <Upload size={32} style={{ color: 'var(--theme-border-bright)' }} />
             <p className="dropzone-hint">Glissez-déposez votre fichier ici ou <span>parcourir</span></p>
             <div className="format-chips">
               {FORMATS.map(f => <span key={f} className="format-chip">{f}</span>)}
@@ -174,6 +183,37 @@ const UploadZone: React.FC<UploadZoneProps> = ({ onUploaded }) => {
             onChange={e => setDescription(e.target.value)}
           />
         </div>
+        <div className="upload-field">
+          <label className="upload-label">
+            Paramètres spectraux <span className="optional">(optionnel — datasets vibratoires)</span>
+          </label>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <input
+              type="number" min="1" step="1"
+              className="upload-input"
+              placeholder="Vitesse nominale (RPM)"
+              value={vitesseRpm}
+              onChange={e => setVitesseRpm(e.target.value)}
+              style={{ flex: 1, minWidth: '140px' }}
+            />
+            <input
+              type="number" min="1" step="1"
+              className="upload-input"
+              placeholder="Nb paires de pôles"
+              value={nbPairesPoles}
+              onChange={e => setNbPairesPoles(e.target.value)}
+              style={{ flex: 1, minWidth: '140px' }}
+            />
+            <input
+              type="number" min="0" step="1"
+              className="upload-input"
+              placeholder="Nb dents engrenage"
+              value={nbDentsEngrenage}
+              onChange={e => setNbDentsEngrenage(e.target.value)}
+              style={{ flex: 1, minWidth: '140px' }}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Mode d'utilisation */}
@@ -189,8 +229,8 @@ const UploadZone: React.FC<UploadZoneProps> = ({ onUploaded }) => {
               style={{
                 flex: 1, minWidth: '180px', cursor: 'pointer',
                 display: 'flex', alignItems: 'flex-start', gap: '10px',
-                padding: '10px 12px', borderRadius: '8px', border: `2px solid ${mode === opt.val ? '#f97316' : '#e5e7eb'}`,
-                background: mode === opt.val ? '#fff7ed' : '#f9fafb', transition: 'all 0.15s',
+                padding: '10px 12px', borderRadius: '8px', border: `2px solid ${mode === opt.val ? '#f97316' : 'var(--theme-border)'}`,
+                background: mode === opt.val ? 'rgba(249,115,22,0.08)' : 'var(--theme-bg-card)', transition: 'all 0.15s',
               }}
             >
               <input
@@ -200,8 +240,8 @@ const UploadZone: React.FC<UploadZoneProps> = ({ onUploaded }) => {
                 style={{ marginTop: '3px', accentColor: '#f97316' }}
               />
               <div>
-                <div style={{ fontWeight: 600, fontSize: '13px', color: '#111827' }}>{opt.icon} {opt.title}</div>
-                <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>{opt.desc}</div>
+                <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--theme-text)' }}>{opt.icon} {opt.title}</div>
+                <div style={{ fontSize: '11px', color: 'var(--theme-text-muted)', marginTop: '2px' }}>{opt.desc}</div>
               </div>
             </label>
           ))}
@@ -218,7 +258,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({ onUploaded }) => {
           disabled={uploading || !file}
         >
           {uploading ? <Loader2 size={14} className="spin" /> : <Zap size={14} />}
-          {uploading ? 'Envoi en cours…' : 'Lancer l\'analyse EDA'}
+          {uploading ? 'Envoi en cours…' : 'Lancer l\'analyse'}
         </button>
       </div>
     </div>
@@ -231,12 +271,13 @@ interface DatasetCardProps {
   isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  onReprocess: () => void;
 }
 
-const DatasetCard: React.FC<DatasetCardProps> = ({ ds, isSelected, onSelect, onDelete }) => {
+const DatasetCard: React.FC<DatasetCardProps> = ({ ds, isSelected, onSelect, onDelete, onReprocess }) => {
   const sc = STATUS_CONFIG[ds.status] || STATUS_CONFIG.uploaded;
   const StatusIcon = sc.icon;
-  const typeColor  = TYPE_COLORS[ds.detected_type || 'generic'] || '#6b7280';
+  const typeColor  = TYPE_COLORS[ds.detected_type || 'generic'] || 'var(--theme-text-muted)';
 
   return (
     <div
@@ -313,6 +354,15 @@ const DatasetCard: React.FC<DatasetCardProps> = ({ ds, isSelected, onSelect, onD
             </a>
           </>
         )}
+        {(ds.status === 'error' || ds.status === 'processed') && (
+          <button
+            className="ds-action-btn ds-action-reprocess"
+            onClick={onReprocess}
+            title="Re-lancer l'analyse EDA (utile si la clé API manquait)"
+          >
+            <RefreshCw size={13} /> Re-analyser
+          </button>
+        )}
         <button className="ds-action-delete" onClick={onDelete} title="Supprimer le dataset">
           <Trash2 size={13} />
         </button>
@@ -326,8 +376,8 @@ const qualityColor = (s: number) => s >= 85 ? '#16a34a' : s >= 70 ? '#65a30d' : 
 const qualityLabel = (s: number) => s >= 85 ? 'Excellent' : s >= 70 ? 'Bon' : s >= 50 ? 'Acceptable' : 'Insuffisant';
 
 const STEP_META: Record<string, { label: string; Icon: React.ElementType; color: string }> = {
-  drop_duplicates:        { label: 'Suppression des doublons',         Icon: Trash2,       color: '#6b7280' },
-  drop_constant_columns:  { label: 'Élimination colonnes constantes',  Icon: X,            color: '#6b7280' },
+  drop_duplicates:        { label: 'Suppression des doublons',         Icon: Trash2,       color: 'var(--theme-text-muted)' },
+  drop_constant_columns:  { label: 'Élimination colonnes constantes',  Icon: X,            color: 'var(--theme-text-muted)' },
   datetime_parsing:       { label: 'Parsing colonnes datetime',        Icon: Clock,        color: '#0891b2' },
   missing_imputation:     { label: 'Imputation valeurs manquantes',    Icon: CheckCircle2, color: '#16a34a' },
   encoding:               { label: 'Encodage catégorielles',           Icon: Zap,          color: '#7c3aed' },
@@ -382,7 +432,8 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
     setIntegrating(true);
     setIntegrateMsg('');
     try {
-      const res = await fetch(`${API}/api/donnees/datasets/${dataset.id}/integrate`, { method: 'POST' });
+      const _sess = JSON.parse(localStorage.getItem('ai-maint-session') || '{}');
+      const res = await fetch(`${API}/api/donnees/datasets/${dataset.id}/integrate?user_id=${_sess.id || 0}`, { method: 'POST' });
       if (res.ok) {
         setIntegrated(true);
         setIntegrateMsg('Dataset intégré au dashboard entreprise.');
@@ -420,7 +471,7 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
         <div className="eda-header-title">
           <Zap size={16} color="#f97316" />
           Résultats EDA — <em>{dataset.name}</em>
-          <span className="eda-type-badge" style={{ background: `${TYPE_COLORS[frame.data_type] || '#6b7280'}18`, color: TYPE_COLORS[frame.data_type] || '#6b7280' }}>
+          <span className="eda-type-badge" style={{ background: `${TYPE_COLORS[frame.data_type] || 'var(--theme-text-muted)'}18`, color: TYPE_COLORS[frame.data_type] || 'var(--theme-text-muted)' }}>
             {TYPE_LABELS[frame.data_type] || frame.data_type}
           </span>
         </div>
@@ -486,8 +537,8 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
             <button
               onClick={() => setIntegrated(true)}
               style={{
-                padding: '5px 10px', borderRadius: '6px', border: '1px solid #d1d5db',
-                background: '#fff', color: '#6b7280', fontSize: '12px', cursor: 'pointer',
+                padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--theme-border)',
+                background: 'var(--theme-bg-card)', color: 'var(--theme-text-muted)', fontSize: '12px', cursor: 'pointer',
               }}
             >
               Ignorer
@@ -578,7 +629,7 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
                       key === 'mttr' ? '#f97316' :
                       key === 'anomaly_rate' && item.value > 10 ? '#dc2626' :
                       key === 'availability' ? '#16a34a' :
-                      (key === 'mtbf' || key === 'mttf') ? '#2563eb' : '#6b7280';
+                      (key === 'mtbf' || key === 'mttf') ? '#2563eb' : 'var(--theme-text-muted)';
                     return (
                       <div
                         key={key}
@@ -589,12 +640,12 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
                           padding: '10px 12px',
                         }}
                       >
-                        <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: 4 }}>{label}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--theme-text-muted)', marginBottom: 4 }}>{label}</div>
                         <div style={{ fontSize: '20px', fontWeight: 700, color }}>
                           {Number(item.value).toLocaleString('fr-FR', { maximumFractionDigits: 3 })}
-                          <span style={{ fontSize: '12px', marginLeft: 4, color: '#6b7280' }}>{item.unit}</span>
+                          <span style={{ fontSize: '12px', marginLeft: 4, color: 'var(--theme-text-muted)' }}>{item.unit}</span>
                         </div>
-                        <div style={{ fontSize: '10px', color: '#9ca3af' }}>source: {item.source_col}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--theme-text-faint)' }}>source: {item.source_col}</div>
                       </div>
                     );
                   })}
@@ -610,7 +661,7 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
                 </h4>
                 {rul_info.rul_mean != null && (
                   <div style={{ marginBottom: '12px', padding: '10px 12px', border: '1px solid #ddd6fe', borderRadius: '10px', background: '#faf5ff' }}>
-                    <div style={{ fontSize: '11px', color: '#6b7280' }}>RUL moyen</div>
+                    <div style={{ fontSize: '11px', color: 'var(--theme-text-muted)' }}>RUL moyen</div>
                     <div style={{ fontSize: '24px', fontWeight: 700, color: '#6d28d9' }}>
                       {rul_info.rul_mean.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}
                     </div>
@@ -621,10 +672,10 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
                           const c = pct > 70 ? '#16a34a' : pct >= 30 ? '#f97316' : '#dc2626';
                           return (
                             <div style={{ marginTop: 8 }}>
-                              <div style={{ height: 8, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }}>
+                              <div style={{ height: 8, borderRadius: 999, background: 'var(--theme-border)', overflow: 'hidden' }}>
                                 <div style={{ width: `${pct}%`, height: '100%', background: c }} />
                               </div>
-                              <div style={{ fontSize: 10, color: '#6b7280', marginTop: 3 }}>{pct.toFixed(1)}% de RUL max observée</div>
+                              <div style={{ fontSize: 10, color: 'var(--theme-text-muted)', marginTop: 3 }}>{pct.toFixed(1)}% de RUL max observée</div>
                             </div>
                           );
                         })()}
@@ -635,16 +686,16 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
 
                 {rul_info.health_index_mean != null && (
                   <div style={{ marginBottom: '10px' }}>
-                    <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: 4 }}>Health Index moyen</div>
+                    <div style={{ fontSize: '11px', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Health Index moyen</div>
                     {(() => {
                       const pct = Math.max(0, Math.min(100, rul_info.health_index_mean! * 100));
                       const c = pct > 70 ? '#16a34a' : pct >= 30 ? '#f97316' : '#dc2626';
                       return (
                         <>
-                          <div style={{ height: 10, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }}>
+                          <div style={{ height: 10, borderRadius: 999, background: 'var(--theme-border)', overflow: 'hidden' }}>
                             <div style={{ width: `${pct}%`, height: '100%', background: c }} />
                           </div>
-                          <div style={{ fontSize: 10, color: '#6b7280', marginTop: 3 }}>{pct.toFixed(1)}%</div>
+                          <div style={{ fontSize: 10, color: 'var(--theme-text-muted)', marginTop: 3 }}>{pct.toFixed(1)}%</div>
                         </>
                       );
                     })()}
@@ -710,7 +761,7 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
                             {col.type === 'numeric'
                               ? <>
                                   min {col.min} · moy {col.mean} · max {col.max}
-                                  {col.q25 != null && <><br/><span style={{color:'#6b7280',fontSize:'0.78em'}}>Q1 {col.q25} · Q3 {col.q75}</span></>}
+                                  {col.q25 != null && <><br/><span style={{color: 'var(--theme-text-muted)',fontSize:'0.78em'}}>Q1 {col.q25} · Q3 {col.q75}</span></>}
                                 </>
                               : Object.keys(col.top_values || {}).slice(0,3).join(', ')}
                           </td>
@@ -719,7 +770,7 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
                               ? <span className={col.outlier_pct! > 10 ? 'text-warn' : col.outlier_pct! > 5 ? 'text-caution' : 'text-ok'}>
                                   {col.n_outliers} ({col.outlier_pct}%)
                                 </span>
-                              : <span style={{color:'#9ca3af'}}>—</span>
+                              : <span style={{color: 'var(--theme-text-faint)'}}>—</span>
                             }
                           </td>
                           <td>
@@ -728,7 +779,7 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
                                       title={`Kurtosis : ${col.kurtosis}`}>
                                   {col.skewness > 0 ? '+' : ''}{col.skewness}
                                 </span>
-                              : <span style={{color:'#9ca3af'}}>—</span>
+                              : <span style={{color: 'var(--theme-text-faint)'}}>—</span>
                             }
                           </td>
                         </tr>
@@ -807,7 +858,7 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
                 <h4>Étapes de transformation ({pipeline_trace.steps.length})</h4>
                 <div className="pipeline-steps">
                   {pipeline_trace.steps.map((step, i) => {
-                    const meta = STEP_META[step.type] || { label: step.type, Icon: Activity, color: '#6b7280' };
+                    const meta = STEP_META[step.type] || { label: step.type, Icon: Activity, color: 'var(--theme-text-muted)' };
                     const { Icon } = meta;
                     return (
                       <div key={i} className="pipeline-step-card">
@@ -839,7 +890,7 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
                                   </tr>
                                 ))}
                                 {Object.keys(step.columns).length > 15 && (
-                                  <tr><td colSpan={5} style={{color:'#9ca3af', textAlign:'center'}}>
+                                  <tr><td colSpan={5} style={{color: 'var(--theme-text-faint)', textAlign:'center'}}>
                                     +{Object.keys(step.columns).length - 15} autres colonnes
                                   </td></tr>
                                 )}
@@ -1018,7 +1069,7 @@ const EDAResults: React.FC<EDAResultsProps> = ({ dataset }) => {
 
 /* ─── ChargementPage ─────────────────────────────────────── */
 const ChargementPage: React.FC = () => {
-  const { datasets, loading, refresh, selectedId, setSelectedId, selectedDataset, loadingSelected } = useDatasets();
+  const { datasets, loading, refresh, selectedId, setSelectedId, selectedDataset, loadingSelected, pollUntilDone } = useDatasets();
   const [showUpload, setShowUpload] = useState(true);
 
   const handleDelete = async (id: number) => {
@@ -1026,6 +1077,12 @@ const ChargementPage: React.FC = () => {
     await fetch(`${API}/api/donnees/datasets/${id}`, { method: 'DELETE' });
     if (selectedId === id) setSelectedId(null);
     await refresh();
+  };
+
+  const handleReprocess = async (id: number) => {
+    await fetch(`${API}/api/donnees/datasets/${id}/reprocess`, { method: 'POST' });
+    await refresh();
+    pollUntilDone(id);
   };
 
   const handleUploaded = (id: number) => {
@@ -1062,7 +1119,7 @@ const ChargementPage: React.FC = () => {
 
         {datasets.length === 0 ? (
           <div className="ds-empty">
-            <Plus size={28} color="#d1d5db" />
+            <Plus size={28} style={{ color: 'var(--theme-border-bright)' }} />
             <p>Aucun dataset chargé</p>
             <small>Uploadez votre premier fichier ci-dessus</small>
           </div>
@@ -1075,6 +1132,7 @@ const ChargementPage: React.FC = () => {
                 isSelected={selectedId === ds.id}
                 onSelect={() => setSelectedId(selectedId === ds.id ? null : ds.id)}
                 onDelete={() => handleDelete(ds.id)}
+                onReprocess={() => handleReprocess(ds.id)}
               />
             ))}
           </div>

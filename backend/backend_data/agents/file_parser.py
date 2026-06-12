@@ -1,5 +1,5 @@
 # backend/agents/file_parser.py
-# Parseur multi-format : CSV, XLSX, TXT, ARFF, ZIP
+# Parseur multi-format : CSV, XLSX, TXT, ARFF, ZIP, MAT (MATLAB)
 
 import io
 import zipfile
@@ -74,6 +74,103 @@ def _parse_arff(path: Path) -> dict[str, pd.DataFrame]:
         return {path.name: df}
 
 
+def _parse_mat(path: Path) -> dict[str, pd.DataFrame]:
+    """Parse un fichier MATLAB .mat (v4/v5) et retourne chaque variable 2D comme DataFrame."""
+    try:
+        import scipy.io as sio
+    except ImportError:
+        raise ValueError("scipy est requis pour lire les fichiers .mat — pip install scipy")
+
+    # Essai format v5 / v7 standard
+    try:
+        mat = sio.loadmat(str(path), squeeze_me=True, struct_as_record=False)
+    except Exception:
+        # Certains .mat v7.3 sont en HDF5 — utiliser h5py si disponible
+        try:
+            import h5py
+            import numpy as np
+            result = {}
+            with h5py.File(str(path), "r") as f:
+                for key in f.keys():
+                    if key.startswith("__"):
+                        continue
+                    try:
+                        arr = np.array(f[key])
+                        if arr.ndim == 2:
+                            df = pd.DataFrame(arr)
+                            result[f"{path.stem}_{key}"] = df
+                        elif arr.ndim == 1:
+                            df = pd.DataFrame({key: arr})
+                            result[f"{path.stem}_{key}"] = df
+                    except Exception:
+                        pass
+            if result:
+                return result
+        except ImportError:
+            pass
+        raise ValueError("Fichier .mat illisible : format HDF5/v7.3 non supporté sans h5py")
+
+    result = {}
+    for key, val in mat.items():
+        if key.startswith("__"):
+            continue
+        try:
+            import numpy as np
+            arr = np.array(val)
+            if arr.ndim == 0:
+                continue
+            if arr.ndim == 1:
+                df = pd.DataFrame({key: arr})
+            elif arr.ndim == 2:
+                # Colonnes nommées si peu de colonnes, sinon col_0..col_N
+                n_cols = arr.shape[1]
+                col_names = [f"{key}_{i}" for i in range(n_cols)] if n_cols > 1 else [key]
+                df = pd.DataFrame(arr, columns=col_names)
+            else:
+                # Tableau 3D+ : on reshape en 2D (samples × features)
+                arr2d = arr.reshape(arr.shape[0], -1)
+                df = pd.DataFrame(arr2d, columns=[f"{key}_{i}" for i in range(arr2d.shape[1])])
+            if not df.empty:
+                label = f"{path.stem}_{key}" if len([k for k in mat if not k.startswith("__")]) > 1 else path.name
+                result[label] = df
+        except Exception:
+            continue
+
+    if not result:
+        raise ValueError(f"Aucune variable matricielle exploitable trouvée dans {path.name}")
+    return result
+
+
+def _parse_npz(path: Path) -> dict[str, pd.DataFrame]:
+    """Parse un fichier NumPy .npz et retourne chaque tableau comme DataFrame."""
+    import numpy as np
+    data = np.load(str(path), allow_pickle=True)
+    result = {}
+    keys = list(data.files)
+    for key in keys:
+        arr = data[key]
+        try:
+            arr = np.array(arr, dtype=float)
+        except Exception:
+            continue
+        if arr.ndim == 0:
+            continue
+        if arr.ndim == 1:
+            df = pd.DataFrame({key: arr})
+        elif arr.ndim == 2:
+            n_cols = arr.shape[1]
+            col_names = [f"{key}_{i}" for i in range(n_cols)] if n_cols > 1 else [key]
+            df = pd.DataFrame(arr, columns=col_names)
+        else:
+            arr2d = arr.reshape(arr.shape[0], -1)
+            df = pd.DataFrame(arr2d, columns=[f"{key}_{i}" for i in range(arr2d.shape[1])])
+        label = f"{path.stem}_{key}" if len(keys) > 1 else path.name
+        result[label] = df
+    if not result:
+        raise ValueError(f"Aucun tableau numérique exploitable trouvé dans {path.name}")
+    return result
+
+
 def _parse_single(path: Path) -> dict[str, pd.DataFrame]:
     suffix = path.suffix.lower()
     if suffix in (".csv", ".data", ".dat"):
@@ -84,6 +181,10 @@ def _parse_single(path: Path) -> dict[str, pd.DataFrame]:
         return _parse_txt(path)
     elif suffix == ".arff":
         return _parse_arff(path)
+    elif suffix == ".mat":
+        return _parse_mat(path)
+    elif suffix == ".npz":
+        return _parse_npz(path)
     else:
         # Try CSV as fallback
         try:
@@ -105,7 +206,7 @@ def parse_file(path: Path) -> dict[str, pd.DataFrame]:
                 if name.startswith("__MACOSX") or name.startswith("."):
                     continue
                 suffix = Path(name).suffix.lower()
-                if suffix not in (".csv", ".xlsx", ".xls", ".txt", ".arff", ".data", ".dat", ".tsv"):
+                if suffix not in (".csv", ".xlsx", ".xls", ".txt", ".arff", ".data", ".dat", ".tsv", ".mat", ".npz"):
                     continue
                 raw = zf.read(name)
                 tmp = Path("/tmp") / Path(name).name
@@ -118,7 +219,7 @@ def parse_file(path: Path) -> dict[str, pd.DataFrame]:
                 finally:
                     tmp.unlink(missing_ok=True)
         if not result:
-            raise ValueError("Le ZIP ne contient aucun fichier lisible (CSV, XLSX, TXT, ARFF)")
+            raise ValueError("Le ZIP ne contient aucun fichier lisible (CSV, XLSX, TXT, ARFF, MAT, NPZ)")
         return result
     else:
         return _parse_single(path)

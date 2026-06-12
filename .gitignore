@@ -83,9 +83,16 @@ coverage.xml
 *.bak
 *.tmp
 *.swp
-"backend/training/envr/" 
-"backend/training/envr/" 
-"backend/training/envr/" 
-"envr/" 
-"backend/training/envr/" 
-"backend/training/envr/" 
+
+# --- Backend generated data (uploads, processed files, plots, reports, PDFs) ---
+backend/backend_data/data/uploads/
+backend/backend_data/data/processed/
+backend/backend_data/data/reports/
+backend/backend_data/data/plots/
+
+# --- Databases ---
+backend/backend_data/db/*.db
+backend/chroma_db/
+
+# --- Generated datasets (scripts conservés, sorties ignorées) ---
+generate_datasets/output/

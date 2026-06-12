@@ -77,3 +77,23 @@ def delete_capteur(capteur_id: int):
         return admin_service.delete_capteur(capteur_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/machines/needs-review-count")
+def get_needs_review_count(user_id: int = Query(...)):
+    """Compte les machines auto-importées depuis datasets avec infos incomplètes."""
+    from db.database import db_session
+    try:
+        with db_session() as conn:
+            row = conn.execute("""
+                SELECT COUNT(*) as cnt FROM machine m
+                JOIN atelier a ON m.id_atelier = a.id_atelier
+                JOIN usine u ON a.id_usine = u.id_usine
+                JOIN utilisateur ut ON u.id_entreprise = ut.id_entreprise
+                WHERE ut.id_utilisateur = ?
+                  AND m.origine_dataset IS NOT NULL
+                  AND (m.type_machine = 'autre' OR m.puissance_kw IS NULL)
+            """, [user_id]).fetchone()
+        return {"count": row["cnt"] if row else 0}
+    except Exception:
+        return {"count": 0}

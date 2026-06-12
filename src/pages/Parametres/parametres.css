@@ -426,6 +426,32 @@
   flex-shrink: 0;
 }
 
+.machine-origin-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: rgba(249,115,22,.12);
+  color: #f97316;
+  border: 1px solid rgba(249,115,22,.3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.param-review-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(249,115,22,.08);
+  border: 1px solid rgba(249,115,22,.3);
+  border-left: 3px solid #f97316;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--theme-text);
+}
+
 .machine-capteur-badge {
   font-size: 11px;
   font-weight: 600;

@@ -24,7 +24,7 @@ const AlertsCard: React.FC<AlertsCardProps> = ({ alerts }) => {
       </div>
       <div className="alerts-list">
         {active.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#6b7280", textAlign: "center", padding: "20px 0" }}>
+          <p style={{ fontSize: 13, color: "var(--theme-text-muted)", textAlign: "center", padding: "20px 0" }}>
             Aucune alerte active
           </p>
         ) : (

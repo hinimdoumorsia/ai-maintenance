@@ -58,7 +58,7 @@ const THEME_META: Record<string, { label: string; color: string; icon: string }>
   'normes-surveillance':      { label: 'Normes & Surveillance',     color: '#0891b2', icon: 'N' },
   'maintenance-conditionnelle': { label: 'Maintenance conditionnelle', color: '#16a34a', icon: 'M' },
   'organisation-maintenance': { label: 'Organisation maintenance',  color: '#b45309', icon: 'O' },
-  'general':                  { label: 'Général',                   color: '#6b7280', icon: 'G' },
+  'general':                  { label: 'Général',                   color: 'var(--theme-text-muted)', icon: 'G' },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

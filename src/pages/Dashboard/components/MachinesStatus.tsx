@@ -40,8 +40,8 @@ const MachinesStatus: React.FC<MachinesStatusProps> = ({ machines }) => {
             return (
               <tr key={m.id}>
                 <td>
-                  <span style={{ fontWeight: 600, color: "#111827" }}>{m.id}</span>
-                  <span style={{ color: "#9ca3af", marginLeft: 6, fontSize: 11 }}>{m.name}</span>
+                  <span style={{ fontWeight: 600, color: "var(--theme-text)" }}>{m.id}</span>
+                  <span style={{ color: "var(--theme-text-faint)", marginLeft: 6, fontSize: 11 }}>{m.name}</span>
                 </td>
                 <td>
                   <span className={`machine-status-dot ${cls}`}>
@@ -75,7 +75,7 @@ const MachinesStatus: React.FC<MachinesStatusProps> = ({ machines }) => {
                     </div>
                   </div>
                 </td>
-                <td style={{ color: "#9ca3af", fontSize: 12 }}>{m.lastCheck}</td>
+                <td style={{ color: "var(--theme-text-faint)", fontSize: 12 }}>{m.lastCheck}</td>
               </tr>
             );
           })}

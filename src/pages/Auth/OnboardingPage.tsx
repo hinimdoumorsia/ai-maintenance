@@ -58,9 +58,30 @@ const OnboardingPage: React.FC = () => {
 
   // File uploads
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoBase64, setLogoBase64] = useState<string | null>(null);
   const [docFile, setDocFile] = useState<File | null>(null);
+  const [docBase64, setDocBase64] = useState<string | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const docRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoChange = (file: File) => {
+    if (logoPreview) URL.revokeObjectURL(logoPreview);
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+    const reader = new FileReader();
+    reader.onload = ev => setLogoBase64(ev.target?.result as string || null);
+    reader.readAsDataURL(file);
+  };
+
+  const handleLogoRemove = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (logoPreview) URL.revokeObjectURL(logoPreview);
+    setLogoFile(null);
+    setLogoPreview(null);
+    setLogoBase64(null);
+    if (logoRef.current) logoRef.current.value = '';
+  };
 
   // Step 1 — Entreprise
   const [entreprise, setEntreprise] = useState({
@@ -121,7 +142,7 @@ const OnboardingPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: user?.id,
-          entreprise: { ...entreprise, ...activite },
+          entreprise: { ...entreprise, ...activite, logo_base64: logoBase64 || '', document_base64: docBase64 || '' },
           machines: machines.filter(m => m.nom.trim()),
         }),
       });
@@ -215,16 +236,27 @@ const OnboardingPage: React.FC = () => {
                 <div className="onb-field full">
                   <label>Logo de l'entreprise</label>
                   <div className={`onb-upload ${logoFile ? 'has-file' : ''}`} onClick={() => logoRef.current?.click()}>
-                    <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/svg+xml" style={{display:'none'}} onChange={e => { if(e.target.files?.[0]) setLogoFile(e.target.files[0]); }} />
-                    <div className="onb-upload-icon">{logoFile ? <FileCheck size={20} /> : <Upload size={20} />}</div>
-                    <div className="onb-upload-text">
-                      {logoFile ? (
-                        <><strong>{logoFile.name}</strong> ({(logoFile.size / 1024).toFixed(0)} KB)</>
-                      ) : (
-                        <><strong>Cliquer pour uploader</strong> ou glisser-déposer<br />PNG, JPG, SVG (max 2 MB)</>
-                      )}
-                    </div>
-                    {logoFile && <div className="onb-upload-filename"><FileCheck size={14} /> Fichier sélectionné</div>}
+                    <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/svg+xml" style={{display:'none'}} onChange={e => { if(e.target.files?.[0]) handleLogoChange(e.target.files[0]); }} />
+                    {logoPreview ? (
+                      <div className="onb-logo-preview" onClick={e => e.stopPropagation()}>
+                        <div className="onb-logo-preview-img-wrap">
+                          <img src={logoPreview} alt="Aperçu logo" className="onb-logo-preview-img" />
+                          <button className="onb-logo-remove-btn" onClick={handleLogoRemove} title="Supprimer">×</button>
+                        </div>
+                        <div className="onb-logo-preview-info">
+                          <FileCheck size={14} style={{ color: '#16a34a' }} />
+                          <span className="onb-logo-preview-name">{logoFile?.name}</span>
+                          <span className="onb-logo-preview-size">({(logoFile!.size / 1024).toFixed(0)} KB)</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="onb-upload-icon"><Upload size={20} /></div>
+                        <div className="onb-upload-text">
+                          <strong>Cliquer pour uploader</strong> ou glisser-déposer<br />PNG, JPG, SVG (max 2 MB)
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -256,7 +288,14 @@ const OnboardingPage: React.FC = () => {
                 <div className="onb-field full">
                   <label>Document descriptif (fiche technique usine)</label>
                   <div className={`onb-upload ${docFile ? 'has-file' : ''}`} onClick={() => docRef.current?.click()}>
-                    <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.txt" style={{display:'none'}} onChange={e => { if(e.target.files?.[0]) setDocFile(e.target.files[0]); }} />
+                    <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.txt" style={{display:'none'}} onChange={e => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setDocFile(file);
+              const reader = new FileReader();
+              reader.onload = ev => setDocBase64(ev.target?.result as string || null);
+              reader.readAsDataURL(file);
+            }} />
                     <div className="onb-upload-icon">{docFile ? <FileCheck size={20} /> : <Upload size={20} />}</div>
                     <div className="onb-upload-text">
                       {docFile ? (

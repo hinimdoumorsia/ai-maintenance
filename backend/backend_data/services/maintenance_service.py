@@ -210,20 +210,32 @@ def get_mouvements_stock() -> list[dict]:
 def get_maintenance_stats() -> dict:
     """KPIs résumés : BTs ouverts, stocks critiques, coût total."""
     with db_session() as conn:
-        row = conn.execute("""
-            SELECT
-                (SELECT COUNT(*) FROM bon_de_travail WHERE statut IN ('cree','planifie','en_cours')) AS bt_ouverts,
-                (SELECT COUNT(*) FROM bon_de_travail WHERE statut='en_cours') AS bt_en_cours,
-                (SELECT COUNT(*) FROM bon_de_travail WHERE priorite='urgente' AND statut!='termine') AS bt_urgents,
-                (SELECT COUNT(*) FROM bon_de_travail WHERE statut='termine') AS bt_termines,
-                (SELECT COUNT(*) FROM piece_rechange WHERE stock_actuel <= stock_min) AS stocks_critiques,
-                (SELECT COUNT(*) FROM piece_rechange) AS total_references,
-                (SELECT COALESCE(SUM(stock_actuel * prix_unitaire), 0) FROM piece_rechange) AS valeur_stock_total,
-                (SELECT AVG(duree_reelle_heures) FROM bon_de_travail
-                 WHERE duree_reelle_heures IS NOT NULL AND duree_reelle_heures > 0) AS mttr_moyen_h,
-                (SELECT COUNT(*) FROM bon_de_travail WHERE statut='termine') AS interventions_reussies
-        """).fetchone()
-        return dict(row)
+        try:
+            row = conn.execute("""
+                SELECT
+                    (SELECT COUNT(*) FROM bon_de_travail WHERE statut IN ('cree','planifie','en_cours')) AS bt_ouverts,
+                    (SELECT COUNT(*) FROM bon_de_travail WHERE statut='en_cours') AS bt_en_cours,
+                    (SELECT COUNT(*) FROM bon_de_travail WHERE priorite='urgente' AND statut!='termine') AS bt_urgents,
+                    (SELECT COUNT(*) FROM bon_de_travail WHERE statut='termine') AS bt_termines,
+                    (SELECT COUNT(*) FROM piece_rechange WHERE stock_actuel <= stock_min) AS stocks_critiques,
+                    (SELECT COUNT(*) FROM piece_rechange) AS total_references,
+                    ROUND(COALESCE((SELECT SUM(pr.prix_unitaire * pr.stock_actuel) FROM piece_rechange pr), 0), 0) AS valeur_stock_total,
+                    ROUND(COALESCE((SELECT AVG(duree_reelle_heures) FROM bon_de_travail
+                           WHERE duree_reelle_heures IS NOT NULL AND duree_reelle_heures > 0), 0), 1) AS mttr_moyen_h,
+                    (SELECT COUNT(*) FROM bon_de_travail WHERE statut='termine') AS interventions_reussies
+            """).fetchone()
+            result = dict(row)
+            for key in result:
+                if result[key] is None:
+                    result[key] = 0
+            return result
+        except Exception as e:
+            print(f"[maintenance_stats] Erreur SQL : {e}")
+            return {
+                "bt_ouverts": 0, "bt_en_cours": 0, "bt_urgents": 0,
+                "bt_termines": 0, "stocks_critiques": 0, "total_references": 0,
+                "valeur_stock_total": 0, "mttr_moyen_h": 0, "interventions_reussies": 0,
+            }
 
 
 def get_machines() -> list[dict]:
@@ -239,7 +251,7 @@ def get_machines() -> list[dict]:
 def get_techniciens() -> list[dict]:
     with db_session() as conn:
         rows = conn.execute("""
-            SELECT DISTINCT id_utilisateur as id_technicien, 
+            SELECT DISTINCT id_utilisateur as id_technicien,
                    prenom || ' ' || nom as nom_complet
             FROM utilisateur
             WHERE role = 'technicien' AND statut = 'actif'
@@ -251,45 +263,42 @@ def get_techniciens() -> list[dict]:
 def assigner_technicien(id_bt: int, id_technicien: int) -> dict:
     """Assigne un technicien à un BT et retourne son nom."""
     with db_session() as conn:
-        # Mettre à jour le BT
         if id_technicien and id_technicien > 0:
             conn.execute("""
-                UPDATE bon_de_travail 
+                UPDATE bon_de_travail
                 SET technicien_principal_id = ?
                 WHERE id_bt = ?
             """, (id_technicien, id_bt))
         else:
             conn.execute("""
-                UPDATE bon_de_travail 
+                UPDATE bon_de_travail
                 SET technicien_principal_id = NULL
                 WHERE id_bt = ?
             """, (id_bt,))
         conn.commit()
-        
-        # Récupérer le nom du technicien pour le retour
+
         row = conn.execute("""
             SELECT prenom || ' ' || nom as prenom_nom_technicien
             FROM utilisateur
             WHERE id_utilisateur = ?
         """, (id_technicien,)).fetchone() if id_technicien and id_technicien > 0 else None
-        
+
         return {
-            "success": True, 
+            "success": True,
             "technicien": row['prenom_nom_technicien'] if row else None
         }
-    
+
 
 def update_bt_statut(id_bt: int, statut: str) -> dict:
     """Met à jour le statut d'un BT."""
     with db_session() as conn:
         conn.execute("""
-            UPDATE bon_de_travail 
+            UPDATE bon_de_travail
             SET statut = ?
             WHERE id_bt = ?
         """, (statut, id_bt))
         conn.commit()
         return {"success": True, "statut": statut}
-
 
 
 def enregistrer_historique(type_action: str, action: str, description: str, utilisateur: str = None, details: str = None):
@@ -335,15 +344,15 @@ def clear_historique() -> dict:
         conn.execute("DELETE FROM historique")
         conn.commit()
         return {"success": True}
-    
+
 
 def create_bon_de_travail(data: dict) -> dict:
     from datetime import datetime
-    
+
     with db_session() as conn:
         bt_count = conn.execute("SELECT COUNT(*) as count FROM bon_de_travail").fetchone()
         bt_num = f"BT-{datetime.now().strftime('%Y%m%d')}-{bt_count['count'] + 1}"
-        
+
         conn.execute("""
             INSERT INTO bon_de_travail (
                 numero_bt, description, type_intervention, priorite, statut,
@@ -360,8 +369,7 @@ def create_bon_de_travail(data: dict) -> dict:
             int(data.get("id_machine"))
         ))
         conn.commit()
-        
-        # Enregistrer dans l'historique
+
         machine = conn.execute("SELECT nom_machine FROM machine WHERE id_machine = ?", (int(data.get("id_machine")),)).fetchone()
         enregistrer_historique(
             type_action="bt",
@@ -370,21 +378,19 @@ def create_bon_de_travail(data: dict) -> dict:
             utilisateur=data.get("utilisateur", "Système"),
             details=f"Priorité: {data.get('priorite', 'moyenne')}, Type: {data.get('type_intervention', 'predictif')}"
         )
-        
-        return {"success": True, "numero_bt": bt_num, "message": f"BT {bt_num} créé"}
 
+        return {"success": True, "numero_bt": bt_num, "message": f"BT {bt_num} créé"}
 
 
 def update_stock_threshold(id_piece: int, stock_min: int, stock_max: int) -> dict:
     with db_session() as conn:
         conn.execute("""
-            UPDATE piece_rechange 
+            UPDATE piece_rechange
             SET stock_min = ?, stock_max = ?
             WHERE id_piece = ?
         """, (stock_min, stock_max, id_piece))
         conn.commit()
-        
-        # Enregistrer dans l'historique
+
         enregistrer_historique(
             type_action="stock",
             action="Modification seuils",
@@ -392,5 +398,5 @@ def update_stock_threshold(id_piece: int, stock_min: int, stock_max: int) -> dic
             utilisateur="Utilisateur",
             details=f"Pièce ID: {id_piece}"
         )
-        
+
         return {"success": True, "stock_min": stock_min, "stock_max": stock_max}

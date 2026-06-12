@@ -1,6 +1,6 @@
 // src/pages/Parametres/components/ParcMachines.tsx
 import React, { useState, useEffect } from 'react';
-import { Cpu, ChevronDown, Plus, Trash2, Upload, Radio, X } from 'lucide-react';
+import { AlertTriangle, Cpu, ChevronDown, Plus, Trash2, Upload, Radio, X } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 
 const API = 'http://localhost:8000';
@@ -50,6 +50,7 @@ interface Machine {
   role: string;
   statut: string;
   documentNom: string;
+  origine_dataset: string | null;
   capteurs: Capteur[];
 }
 
@@ -96,6 +97,7 @@ const ParcMachines: React.FC = () => {
           role: m.role_machine || '',
           statut: m.statut || 'en_service',
           documentNom: '',
+          origine_dataset: m.origine_dataset || null,
           capteurs: (m.capteurs || []).map((c: any) => ({
             id: c.id_capteur.toString(),
             type: c.type_capteur || '',
@@ -175,6 +177,7 @@ const ParcMachines: React.FC = () => {
   };
 
   const totalCapteurs = machines.reduce((s, m) => s + m.capteurs.length, 0);
+  const incompleteCount = machines.filter(m => m.origine_dataset && (m.type === 'autre')).length;
 
   // ── Render
   return (
@@ -191,6 +194,17 @@ const ParcMachines: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Bannière machines incomplètes */}
+      {incompleteCount > 0 && (
+        <div className="param-review-banner">
+          <AlertTriangle size={15} style={{ flexShrink: 0, color: '#f97316' }} />
+          <span>
+            <strong>{incompleteCount} machine{incompleteCount > 1 ? 's' : ''}</strong> importée{incompleteCount > 1 ? 's' : ''} depuis un dataset avec des informations incomplètes.
+            {' '}Complétez le type, la puissance et le RPM pour améliorer la précision des analyses.
+          </span>
+        </div>
+      )}
 
       {/* Stats + add button */}
       <div className="machines-header">
@@ -314,6 +328,12 @@ const ParcMachines: React.FC = () => {
               <span className={`machine-statut-badge ${machine.statut === 'en_service' ? 'statut-ok' : machine.statut === 'maintenance' ? 'statut-warning' : machine.statut === 'arret' ? 'statut-arret' : 'statut-hs'}`}>
                 {STATUTS[machine.statut] || machine.statut}
               </span>
+
+              {machine.origine_dataset && (
+                <span className="machine-origin-tag" title={`Importée depuis : ${machine.origine_dataset}`}>
+                  Dataset
+                </span>
+              )}
 
               <span className={`machine-capteur-badge ${machine.capteurs.length > 0 ? 'has-capteurs' : ''}`}>
                 <Radio size={11} />

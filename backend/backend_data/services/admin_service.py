@@ -21,15 +21,18 @@ def update_entreprise(user_id: int, data: dict):
             
         ent_id = user["id_entreprise"]
         conn.execute(
-            """UPDATE entreprise 
-               SET nom_entreprise = ?, contact_telephone = ?, contact_email = ?, 
-                   adresse_usine = ?, ville = ?, pays = ?, code_postal = ?, 
-                   domaine_industriel = ?, descriptif_activite = ?, production_principale = ?, site_web = ?
+            """UPDATE entreprise
+               SET nom_entreprise = ?, contact_telephone = ?, contact_email = ?,
+                   adresse_usine = ?, ville = ?, pays = ?, code_postal = ?,
+                   domaine_industriel = ?, descriptif_activite = ?, production_principale = ?, site_web = ?,
+                   logo_url = ?, document_descriptif_url = ?
                WHERE id_entreprise = ?""",
             (
                 data.get("nom_entreprise"), data.get("contact_telephone"), data.get("contact_email"),
                 data.get("adresse_usine"), data.get("ville"), data.get("pays"), data.get("code_postal"),
                 data.get("domaine_industriel"), data.get("descriptif_activite"), data.get("production_principale"), data.get("site_web"),
+                data.get("logo_url"),
+                data.get("document_descriptif_url"),
                 ent_id
             )
         )
@@ -85,10 +88,10 @@ def add_machine(user_id: int, data: dict):
 def update_machine(machine_id: int, data: dict):
     with db_session() as conn:
         conn.execute(
-            """UPDATE machine 
-               SET code_machine = ?, type_machine = ?, role_machine = ?
+            """UPDATE machine
+               SET code_machine = ?, nom_machine = ?, type_machine = ?, role_machine = ?
                WHERE id_machine = ?""",
-            (data.get("code"), data.get("type"), data.get("role"), machine_id)
+            (data.get("code"), data.get("nom"), data.get("type"), data.get("role"), machine_id)
         )
     return {"success": True, "id": machine_id}
 

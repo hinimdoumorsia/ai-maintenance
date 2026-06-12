@@ -138,23 +138,23 @@ const StocksPieces: React.FC<StocksPiecesProps> = ({ data, loading, onRefresh })
             )}
           </div>
 
-          <span style={{ fontSize: 11, color: "#6b7280" }}>{p.categorie ?? "—"}</span>
+          <span style={{ fontSize: 11, color: "var(--theme-text-muted)" }}>{p.categorie ?? "—"}</span>
 
           <span className={`maint-stock-qty ${p.stock_critique ? "critique" : p.stock_actuel <= p.stock_min * 1.5 ? "warn" : ""}`}>
             {p.stock_actuel}
           </span>
 
-          <span style={{ fontSize: 11, color: "#6b7280" }}>
+          <span style={{ fontSize: 11, color: "var(--theme-text-muted)" }}>
             {p.stock_min} / {p.stock_max}
           </span>
 
-          <span style={{ fontSize: 11, color: "#374151" }}>
+          <span style={{ fontSize: 11, color: "var(--theme-text)" }}>
             {p.valeur_stock != null ? `${p.valeur_stock.toLocaleString("fr-FR")} €` : "—"}
           </span>
 
           <div>
-            <div style={{ fontSize: 11, color: "#374151", fontWeight: 600 }}>{p.sorties_30j} unités</div>
-            <div style={{ fontSize: 10, color: "#9ca3af" }}>{formatDate(p.derniere_sortie)}</div>
+            <div style={{ fontSize: 11, color: "var(--theme-text)", fontWeight: 600 }}>{p.sorties_30j} unités</div>
+            <div style={{ fontSize: 10, color: "var(--theme-text-faint)" }}>{formatDate(p.derniere_sortie)}</div>
           </div>
 
           <div>

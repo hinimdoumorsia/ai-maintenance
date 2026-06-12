@@ -8,7 +8,7 @@ import glob
 from pathlib import Path
 
 import numpy as np
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
 from db.database import db_session, rows_to_list
@@ -16,7 +16,7 @@ from agents.eda_agent import UPLOAD_DIR, PROCESSED_DIR, PLOTS_DIR, REPORTS_DIR, 
 
 router = APIRouter()
 
-ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".txt", ".tsv", ".arff", ".zip", ".data", ".dat"}
+ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".txt", ".tsv", ".arff", ".zip", ".data", ".dat", ".mat", ".npz"}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -105,6 +105,10 @@ async def upload_dataset(
     name: str = Form(...),
     description: str = Form(""),
     mode: str = Form("exploratory"),
+    vitesse_rpm: float | None = Form(None),
+    nb_paires_poles: int | None = Form(None),
+    nb_dents_engrenage: int | None = Form(None),
+    user_id: int = Form(0),
 ):
     """Upload un dataset et lance l'analyse EDA en arrière-plan.
     mode='exploratory' : EDA uniquement, aucune ingestion dashboard.
@@ -131,29 +135,55 @@ async def upload_dataset(
     with db_session() as conn:
         cur = conn.execute(
             """INSERT INTO dataset (name, description, original_filename, upload_path,
-               file_type, file_size_bytes, status, ingestion_mode)
-               VALUES (?, ?, ?, ?, ?, ?, 'uploaded', ?)""",
+               file_type, file_size_bytes, status, ingestion_mode,
+               vitesse_rpm, nb_paires_poles, nb_dents_engrenage, uploaded_by)
+               VALUES (?, ?, ?, ?, ?, ?, 'uploaded', ?, ?, ?, ?, ?)""",
             (name, description, file.filename, str(upload_path),
-             suffix.lstrip("."), len(content), mode),
+             suffix.lstrip("."), len(content), mode,
+             vitesse_rpm, nb_paires_poles, nb_dents_engrenage, user_id or None),
         )
         dataset_id = cur.lastrowid
 
     # Lancement EDA en arrière-plan
-    background_tasks.add_task(run_eda, dataset_id, str(upload_path), _update_db, ingest)
+    background_tasks.add_task(
+        run_eda, dataset_id, str(upload_path), _update_db, ingest,
+        vitesse_rpm, nb_paires_poles, nb_dents_engrenage,
+    )
 
     return {"dataset_id": dataset_id, "status": "uploaded", "message": "EDA lancé en arrière-plan"}
 
 
+@router.post("/datasets/{dataset_id}/reprocess")
+def reprocess_dataset(dataset_id: int, background_tasks: BackgroundTasks):
+    """Relance l'EDA sur un dataset déjà uploadé (utile si l'EDA a échoué ou si la clé API manquait)."""
+    _ensure_dataset_table()
+    with db_session() as conn:
+        row = conn.execute("SELECT * FROM dataset WHERE id = ?", (dataset_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Dataset introuvable")
+    row = dict(row)
+    upload_path = row.get("upload_path")
+    if not upload_path or not Path(upload_path).exists():
+        raise HTTPException(status_code=400, detail="Fichier original introuvable — re-uploadez le dataset")
+    ingest = row.get("ingestion_mode") == "company"
+    # Remet le statut à "processing"
+    with db_session() as conn:
+        conn.execute("UPDATE dataset SET status='processing', error_message=NULL WHERE id=?", (dataset_id,))
+    background_tasks.add_task(run_eda, dataset_id, upload_path, _update_db, ingest)
+    return {"dataset_id": dataset_id, "status": "processing", "message": "Re-analyse EDA lancée"}
+
+
 @router.get("/datasets")
-def list_datasets():
-    """Liste tous les datasets uploadés avec leur statut."""
+def list_datasets(user_id: int = Query(...)):
+    """Liste les datasets uploadés par l'utilisateur courant."""
     _ensure_dataset_table()
     with db_session() as conn:
         rows = conn.execute(
             "SELECT id, name, description, original_filename, file_type, file_size_bytes, "
             "n_rows, n_cols, detected_type, status, created_at, processed_at, error_message, "
             "ingestion_mode "
-            "FROM dataset ORDER BY created_at DESC"
+            "FROM dataset WHERE uploaded_by = ? ORDER BY created_at DESC",
+            (user_id,)
         ).fetchall()
     return rows_to_list(rows)
 
@@ -176,11 +206,12 @@ def get_dataset(dataset_id: int):
 
 
 @router.post("/datasets/{dataset_id}/integrate")
-def integrate_dataset(dataset_id: int):
+def integrate_dataset(dataset_id: int, user_id: int = 0):
     """Intègre manuellement un dataset dans le dashboard entreprise (ingestion BD).
     Utilisé pour les datasets uploadés en mode 'exploratory' que l'utilisateur
     décide ensuite d'intégrer après avoir vu les résultats EDA.
     """
+    from fastapi import Query as FQuery
     from agents.eda_agent import _ingest_dashboard, _detect_data_type
     from agents.file_parser import parse_file
 
@@ -196,7 +227,7 @@ def integrate_dataset(dataset_id: int):
         frames = parse_file(upload_path)
         df = list(frames.values())[0]
         data_type = _detect_data_type(df)
-        _ingest_dashboard(df, data_type, dataset_id)
+        _ingest_dashboard(df, data_type, dataset_id, user_id=user_id)
         with db_session() as conn:
             conn.execute("UPDATE dataset SET ingestion_mode = 'company' WHERE id = ?", (dataset_id,))
         return {"status": "integrated", "message": "Dataset intégré au dashboard entreprise."}
@@ -265,6 +296,20 @@ def download_report(dataset_id: int):
     if not p.exists():
         raise HTTPException(status_code=404, detail="Rapport introuvable sur disque")
     return FileResponse(str(p), filename=f"EDA_{row['name']}.pdf", media_type="application/pdf")
+
+
+@router.get("/datasets/{dataset_id}/download/vibration-report")
+def download_vibration_report(dataset_id: str):
+    """Génère et télécharge le rapport PDF d'analyse vibratoire."""
+    from agents.vibration_pdf import generate_vibration_pdf
+    _get_or_404(dataset_id)
+    with db_session() as conn:
+        row = conn.execute("SELECT name FROM dataset WHERE id = ?", (dataset_id,)).fetchone()
+    dataset_name = row["name"] if row else f"dataset_{dataset_id}"
+    analysis = get_dataset_vibration_analysis(dataset_id)
+    pdf_path = generate_vibration_pdf(dataset_name, analysis, int(dataset_id))
+    safe_name = dataset_name.replace(" ", "_").replace("/", "-")
+    return FileResponse(str(pdf_path), filename=f"Analyse_Vibratoire_{safe_name}.pdf", media_type="application/pdf")
 
 
 @router.get("/datasets/{dataset_id}/download/preprocessing-trace")
@@ -347,27 +392,148 @@ def preview_dataset(dataset_id: int, n: int = 15, from_upload: bool = False):
 # ── Routes héritées ────────────────────────────────────────────────────────────
 
 @router.get("/kpis")
-def get_kpis():
+def get_kpis(user_id: int = Query(...)):
     with db_session() as conn:
+        ent_row = conn.execute(
+            "SELECT id_entreprise FROM utilisateur WHERE id_utilisateur = ?", (user_id,)
+        ).fetchone()
+        if not ent_row or not ent_row["id_entreprise"]:
+            return {}
+        ent_id = ent_row["id_entreprise"]
         row = conn.execute("""
-            SELECT ROUND(AVG(disponibilite_pct),1) AS disponibilite,
-                   ROUND(AVG(trs_oee_pct),1)       AS oee,
-                   ROUND(AVG(mtbf_heures),0)        AS mtbf,
-                   ROUND(AVG(mttr_heures),1)        AS mttr
-            FROM kpi_journalier
-            WHERE date_kpi >= date('now','-30 days')
-        """).fetchone()
+            WITH ent_machines AS (
+                SELECT m.id_machine FROM machine m
+                JOIN atelier a ON m.id_atelier = a.id_atelier
+                JOIN usine u ON a.id_usine = u.id_usine
+                WHERE u.id_entreprise = ?
+            ),
+            cur AS (
+                SELECT ROUND(AVG(disponibilite_pct),1) AS disponibilite,
+                       ROUND(AVG(trs_oee_pct),1)       AS oee,
+                       ROUND(AVG(mtbf_heures),0)        AS mtbf,
+                       ROUND(AVG(mttr_heures),1)        AS mttr,
+                       ROUND(AVG(performance_pct),1)    AS performance,
+                       ROUND(AVG(qualite_pct),1)        AS qualite,
+                       ROUND(SUM(cout_maintenance_jour)/1000.0,1) AS cout_maintenance_k
+                FROM kpi_journalier
+                WHERE id_machine IN (SELECT id_machine FROM ent_machines)
+                  AND date_kpi >= date('now','-30 days')
+            ),
+            prv AS (
+                SELECT ROUND(AVG(disponibilite_pct),1) AS disponibilite,
+                       ROUND(AVG(trs_oee_pct),1)       AS oee,
+                       ROUND(AVG(mtbf_heures),0)        AS mtbf,
+                       ROUND(AVG(mttr_heures),1)        AS mttr
+                FROM kpi_journalier
+                WHERE id_machine IN (SELECT id_machine FROM ent_machines)
+                  AND date_kpi >= date('now','-60 days')
+                  AND date_kpi <  date('now','-30 days')
+            )
+            SELECT c.disponibilite, c.oee, c.mtbf, c.mttr,
+                   c.performance, c.qualite, c.cout_maintenance_k,
+                   ROUND(c.disponibilite - p.disponibilite, 1) AS delta_disponibilite,
+                   ROUND(c.oee - p.oee, 1)                     AS delta_oee,
+                   ROUND(c.mtbf - p.mtbf, 0)                   AS delta_mtbf,
+                   ROUND(c.mttr - p.mttr, 1)                   AS delta_mttr
+            FROM cur c, prv p
+        """, (ent_id,)).fetchone()
     return dict(row) if row else {}
 
 
 @router.get("/visualisation")
-def get_visualisation():
+def get_visualisation(user_id: int = Query(...)):
     with db_session() as conn:
+        ent_row = conn.execute(
+            "SELECT id_entreprise FROM utilisateur WHERE id_utilisateur = ?", (user_id,)
+        ).fetchone()
+        if not ent_row or not ent_row["id_entreprise"]:
+            return []
+        ent_id = ent_row["id_entreprise"]
         rows = conn.execute("""
-            SELECT date_kpi, vrms_moyen, nb_alertes, disponibilite_pct
+            WITH ent_machines AS (
+                SELECT m.id_machine FROM machine m
+                JOIN atelier a ON m.id_atelier = a.id_atelier
+                JOIN usine u ON a.id_usine = u.id_usine
+                WHERE u.id_entreprise = ?
+            )
+            SELECT date_kpi,
+                   ROUND(AVG(disponibilite_pct),1) AS disponibilite_pct,
+                   ROUND(AVG(trs_oee_pct),1)       AS oee_pct,
+                   ROUND(AVG(mtbf_heures),0)        AS mtbf_heures,
+                   ROUND(AVG(mttr_heures),1)        AS mttr_heures,
+                   ROUND(AVG(qualite_pct),1)        AS qualite_pct,
+                   SUM(nb_alertes)                  AS nb_alertes
             FROM kpi_journalier
-            ORDER BY date_kpi DESC LIMIT 30
-        """).fetchall()
+            WHERE id_machine IN (SELECT id_machine FROM ent_machines)
+            GROUP BY date_kpi
+            ORDER BY date_kpi DESC LIMIT 90
+        """, (ent_id,)).fetchall()
+    return rows_to_list(rows)
+
+
+@router.get("/pareto")
+def get_pareto(user_id: int = Query(...)):
+    """Analyse Pareto des défauts actifs — coûts et machines impactées."""
+    with db_session() as conn:
+        ent_row = conn.execute(
+            "SELECT id_entreprise FROM utilisateur WHERE id_utilisateur = ?", (user_id,)
+        ).fetchone()
+        if not ent_row or not ent_row["id_entreprise"]:
+            return []
+        ent_id = ent_row["id_entreprise"]
+        rows = conn.execute("""
+            WITH ent_machines AS (
+                SELECT m.id_machine, m.code_machine, m.nom_machine FROM machine m
+                JOIN atelier a ON m.id_atelier = a.id_atelier
+                JOIN usine u ON a.id_usine = u.id_usine
+                WHERE u.id_entreprise = ?
+            )
+            SELECT dd.type_defaut,
+                   COUNT(DISTINCT dd.id_defaut)                             AS nb_defauts,
+                   COALESCE(SUM(bt.cout_total), 0)                          AS cout_total,
+                   GROUP_CONCAT(DISTINCT em.code_machine||' '||em.nom_machine) AS machines
+            FROM defaut_detecte dd
+            JOIN ent_machines em ON dd.id_machine = em.id_machine
+            LEFT JOIN bon_de_travail bt ON bt.id_defaut = dd.id_defaut
+            WHERE dd.statut IN ('actif','en_observation','resolu')
+            GROUP BY dd.type_defaut
+            ORDER BY cout_total DESC
+        """, (ent_id,)).fetchall()
+    raw = rows_to_list(rows)
+    total = sum(r["cout_total"] for r in raw) or 1
+    result = []
+    for r in raw:
+        r["pct"] = round(r["cout_total"] / total * 100, 1)
+        r["machines"] = [m.strip() for m in (r["machines"] or "").split(",") if m.strip()]
+        result.append(r)
+    return result
+
+
+@router.get("/ateliers")
+def get_ateliers(user_id: int = Query(...)):
+    """KPIs agrégés par atelier sur 30 jours (filtre entreprise)."""
+    with db_session() as conn:
+        ent_row = conn.execute(
+            "SELECT id_entreprise FROM utilisateur WHERE id_utilisateur = ?", (user_id,)
+        ).fetchone()
+        if not ent_row or not ent_row["id_entreprise"]:
+            return []
+        ent_id = ent_row["id_entreprise"]
+        rows = conn.execute("""
+            SELECT a.nom_atelier                    AS nom,
+                   ROUND(AVG(k.disponibilite_pct),1) AS disponibilite,
+                   ROUND(AVG(k.trs_oee_pct),1)       AS oee,
+                   ROUND(AVG(k.mtbf_heures),0)        AS mtbf,
+                   ROUND(AVG(k.mttr_heures),1)        AS mttr,
+                   SUM(k.nb_alertes)                  AS nb_alertes
+            FROM kpi_journalier k
+            JOIN atelier a ON k.id_atelier = a.id_atelier
+            JOIN usine u   ON a.id_usine   = u.id_usine
+            WHERE u.id_entreprise = ?
+              AND k.date_kpi >= date('now','-30 days')
+            GROUP BY k.id_atelier, a.nom_atelier
+            ORDER BY disponibilite DESC
+        """, (ent_id,)).fetchall()
     return rows_to_list(rows)
 
 
@@ -462,13 +628,108 @@ def _compat_from_type(detected_type: str | None) -> dict:
     }
 
 
+@router.get("/vibration/live")
+def get_live_vibration(user_id: int = Query(...)):
+    """Données vibratoires en direct depuis mesure_globale pour l'entreprise de l'utilisateur."""
+    from db.database import db_session
+    with db_session() as conn:
+        rows = conn.execute("""
+            SELECT
+                m.code_machine,
+                m.puissance_kw,
+                m.vitesse_rotation_nominale_rpm,
+                mg.timestamp_mesure,
+                mg.v_rms_mm_s,
+                mg.a_rms_g,
+                mg.a_peak_g,
+                mg.crest_factor,
+                mg.kurtosis,
+                mg.vitesse_rotation_rpm,
+                mg.zone_iso_calculee,
+                mg.statut_alarme
+            FROM mesure_globale mg
+            JOIN machine m ON mg.id_machine = m.id_machine
+            JOIN atelier a ON m.id_atelier = a.id_atelier
+            JOIN usine u ON a.id_usine = u.id_usine
+            JOIN utilisateur ut ON u.id_entreprise = ut.id_entreprise
+            WHERE ut.id_utilisateur = ?
+            ORDER BY mg.timestamp_mesure DESC
+            LIMIT 500
+        """, [user_id]).fetchall()
+
+    raw_data = []
+    for r in rows:
+        rpm = r["vitesse_rotation_rpm"] or r["vitesse_rotation_nominale_rpm"] or 1500
+        f0 = round(rpm / 60, 2)
+        raw_data.append({
+            "machine_id":            r["code_machine"],
+            "timestamp":             r["timestamp_mesure"],
+            "v_rms_mm_s":            r["v_rms_mm_s"],
+            "a_rms_g":               r["a_rms_g"],
+            "crest_factor":          r["crest_factor"],
+            "kurtosis":              r["kurtosis"],
+            "f0_hz":                 f0,
+            "vitesse_rotation_rpm":  rpm,
+            "zone_iso":              r["zone_iso_calculee"] or "—",
+            "statut_alarme":         r["statut_alarme"] or "normal",
+            "puissance_kw":          r["puissance_kw"],
+            "bpfo_amplitude":        0,
+            "bpfi_amplitude":        0,
+            "bsf_amplitude":         0,
+            "bpfo_freq_hz":          None,
+            "bpfi_freq_hz":          None,
+            "bsf_freq_hz":           None,
+            "ftf_freq_hz":           None,
+            "bearing_ref":           "—",
+        })
+
+    zones = {"A": 0, "B": 0, "C": 0, "D": 0}
+    vrms_vals = []
+    for r in raw_data:
+        v = r["v_rms_mm_s"]
+        if v is not None:
+            vrms_vals.append(v)
+            if v < 2.3:   zones["A"] += 1
+            elif v < 4.5: zones["B"] += 1
+            elif v < 7.1: zones["C"] += 1
+            else:          zones["D"] += 1
+    total = max(sum(zones.values()), 1)
+    zones_pct = {f"zone_{k.lower()}": round(v / total * 100, 1) for k, v in zones.items()}
+    vrms_moyen = round(sum(vrms_vals) / len(vrms_vals), 2) if vrms_vals else 0
+
+    return _fallback(
+        summary={"vrms_moyen": vrms_moyen},
+        zones=zones_pct,
+        raw_data=raw_data,
+        detected_columns={
+            "vrms": True, "crest": True, "kurtosis": True,
+            "timestamp": True, "machine_id": True, "rpm": True,
+        },
+    )
+
+
 @router.get("/datasets/{dataset_id}/vibration-analysis")
 def get_dataset_vibration_analysis(dataset_id: str):
     row = _get_or_404(dataset_id)
     results = _parse_eda_results(row)
     summary = results[0].get("summary", {}) if results else {}
 
+    # Machine parameters (stored at upload time)
+    machine_params = {
+        "vitesse_rpm": row.get("vitesse_rpm"),
+        "nb_paires_poles": row.get("nb_paires_poles"),
+        "nb_dents_engrenage": row.get("nb_dents_engrenage"),
+    }
+    # Spectral params from pre-computed EDA kpis (available after EDA with vitesse_rpm provided)
+    spectral_params = None
+    for frame in results:
+        kpis = frame.get("kpis", {})
+        if isinstance(kpis, dict) and "spectral_params" in kpis:
+            spectral_params = kpis["spectral_params"]
+            break
+
     trend, ck, zones, defauts, raw_data = [], [], {"A": 0, "B": 0, "C": 0, "D": 0}, [], []
+    detected_columns: dict = {}
     try:
         import pandas as pd
         # Lire le fichier ORIGINAL (upload_path) pour avoir les colonnes brutes non-standardisées
@@ -476,17 +737,17 @@ def get_dataset_vibration_analysis(dataset_id: str):
         if not orig_path or not Path(orig_path).exists():
             orig_path = row.get("processed_path")
         if not orig_path or not Path(orig_path).exists():
-            return _fallback(summary)
+            return _fallback(summary, machine_params=machine_params, spectral_params=spectral_params)
 
         df = pd.read_csv(orig_path, low_memory=False).head(500)
 
         # Detect columns from raw names (not encoded/standardized)
-        vrms_col = next((c for c in df.columns if any(k in c.lower() for k in ("v_rms_mm_s","v_rms","vrms","velocity_rms"))), None)
-        crest_col = next((c for c in df.columns if "crest" in c.lower() or "facteur_crete" in c.lower()), None)
-        kurt_col = next((c for c in df.columns if "kurtosis" in c.lower() or "kurt" in c.lower() or "facteur_k" in c.lower()), None)
-        time_col = next((c for c in df.columns if any(k in c.lower() for k in ("timestamp","time","date","datetime","horodatage"))), None)
-        machine_col = next((c for c in df.columns if c.lower() in ("machine_id","machine","code_machine")), None)
-        rpm_col = next((c for c in df.columns if any(k in c.lower() for k in ("rpm","vitesse_rotation","rotation"))), None)
+        vrms_col = next((c for c in df.columns if any(k in c.lower() for k in ("v_rms_mm_s","v_rms","vrms","velocity_rms","rms"))), None)
+        crest_col = next((c for c in df.columns if any(k in c.lower() for k in ("crest","facteur_crete","crest_factor","impulse_factor"))), None)
+        kurt_col = next((c for c in df.columns if any(k in c.lower() for k in ("kurtosis","kurt","facteur_k"))), None)
+        time_col = next((c for c in df.columns if any(k in c.lower() for k in ("timestamp","time","date","datetime","horodatage","cycle","index"))), None)
+        machine_col = next((c for c in df.columns if c.lower() in ("machine_id","machine","code_machine","id","label")), None)
+        rpm_col = next((c for c in df.columns if any(k in c.lower() for k in ("rpm","vitesse_rotation","rotation","speed","vitesse"))), None)
         bearing_col = next((c for c in df.columns if "bearing" in c.lower() or "roulement" in c.lower()), None)
         bpfo_f = next((c for c in df.columns if "bpfo_freq" in c.lower()), None)
         bpfi_f = next((c for c in df.columns if "bpfi_freq" in c.lower()), None)
@@ -500,8 +761,22 @@ def get_dataset_vibration_analysis(dataset_id: str):
         statut_col = next((c for c in df.columns if "statut" in c.lower() or "alarme" in c.lower()), None)
         pwr_col = next((c for c in df.columns if "puissance" in c.lower() or "power" in c.lower()), None)
 
+        detected_columns = {
+            "vrms": vrms_col is not None,
+            "crest": crest_col is not None,
+            "kurtosis": kurt_col is not None,
+            "timestamp": time_col is not None,
+            "machine_id": machine_col is not None,
+            "rpm": rpm_col is not None,
+            "bpfo_amplitude": bpfo_a is not None,
+            "bpfi_amplitude": bpfi_a is not None,
+            "bsf_amplitude": bsf_a is not None,
+        }
+
         for _, r in df.head(300).iterrows():
             mid = str(r.get(machine_col, "")) if machine_col else "—"
+            if not mid or mid == "nan":
+                mid = "—"
             f0 = float(r[rpm_col]) / 60 if rpm_col and pd.notna(r.get(rpm_col)) else None
             raw_data.append({
                 "machine_id": mid,
@@ -544,10 +819,12 @@ def get_dataset_vibration_analysis(dataset_id: str):
     except Exception as e:
         print(f"[vibration-analysis] fallback: {e}")
 
-    return _fallback(summary, trend, ck, zones, defauts, raw_data)
+    return _fallback(summary, trend, ck, zones, defauts, raw_data, detected_columns,
+                     machine_params=machine_params, spectral_params=spectral_params)
 
 
-def _fallback(summary=None, trend=None, ck=None, zones=None, defauts=None, raw_data=None):
+def _fallback(summary=None, trend=None, ck=None, zones=None, defauts=None, raw_data=None,
+              detected_columns=None, machine_params=None, spectral_params=None):
     z = zones or {}
     rd = raw_data or []
     # Compute vrms_moyen from actual raw_data values
@@ -561,7 +838,7 @@ def _fallback(summary=None, trend=None, ck=None, zones=None, defauts=None, raw_d
         if mid and v is not None:
             last_vrms[mid] = float(v)
     machines_zone_d = sum(1 for v in last_vrms.values() if v >= 7.1)
-    pct_zone_ab = round(z.get("zone_a", 0) + z.get("zone_b", 0), 1) if sum(z.values()) > 0 else 78
+    pct_zone_ab = round(z.get("zone_a", 0) + z.get("zone_b", 0), 1) if z and sum(z.values()) > 0 else None
     return {
         "resume": {
             "vrms_moyen": vrms_moyen,
@@ -569,25 +846,52 @@ def _fallback(summary=None, trend=None, ck=None, zones=None, defauts=None, raw_d
             "machines_zone_d": machines_zone_d,
             "defauts_detectes": len(defauts) if defauts else 0,
         },
-        "stats_iso": z if sum(z.values()) > 0 else {"zone_a": 45, "zone_b": 33, "zone_c": 15, "zone_d": 7},
+        "stats_iso": z if z and sum(z.values()) > 0 else {},
         "tendance": trend or [], "crest_kurtosis": ck or [], "defauts": defauts or [], "raw_data": rd,
+        "detected_columns": detected_columns or {},
+        "machine_params": machine_params or {},
+        "spectral_params": spectral_params,
     }
 
 
 @router.get("/datasets/{dataset_id}/kpi-analysis")
 def get_dataset_kpi_analysis(dataset_id: str):
     row = _get_or_404(dataset_id)
-    return {"disponibilite": 94.2, "oee": 78.5, "mtbf": 480, "mttr": 4.2}
+    eda_raw = row.get("eda_results")
+    kpis = {}
+    if eda_raw:
+        try:
+            frames = json.loads(eda_raw) if isinstance(eda_raw, str) else eda_raw
+            for frame in (frames if isinstance(frames, list) else [frames]):
+                if isinstance(frame, dict) and frame.get("kpis"):
+                    kpis = frame["kpis"]
+                    break
+        except Exception:
+            pass
+    return {
+        "disponibilite": kpis.get("disponibilite"),
+        "oee": kpis.get("oee"),
+        "mtbf": kpis.get("mtbf"),
+        "mttr": kpis.get("mttr"),
+        "has_data": bool(kpis),
+    }
 
 
 @router.get("/datasets/{dataset_id}/pronostic-analysis")
 def get_dataset_pronostic_analysis(dataset_id: str):
-    _get_or_404(dataset_id)
-    return {"machines": [
-        {"machine_id": "M001", "machine_name": "Compresseur C-1", "health_index": 45, "rul_days": 12, "rul_confidence": 87, "vrms_current": 5.2, "last_updated": "2026-05-05"},
-        {"machine_id": "M002", "machine_name": "Pompe P-12",      "health_index": 18, "rul_days": 6,  "rul_confidence": 92, "vrms_current": 8.1, "last_updated": "2026-05-05"},
-        {"machine_id": "M003", "machine_name": "Ventilateur V-08","health_index": 72, "rul_days": 45, "rul_confidence": 78, "vrms_current": 3.1, "last_updated": "2026-05-04"},
-    ]}
+    row = _get_or_404(dataset_id)
+    eda_raw = row.get("eda_results")
+    machines = []
+    if eda_raw:
+        try:
+            frames = json.loads(eda_raw) if isinstance(eda_raw, str) else eda_raw
+            for frame in (frames if isinstance(frames, list) else [frames]):
+                if isinstance(frame, dict) and frame.get("pronostic_machines"):
+                    machines = frame["pronostic_machines"]
+                    break
+        except Exception:
+            pass
+    return {"machines": machines}
 
 
 @router.get("/datasets/{dataset_id}/compatibility")
@@ -601,83 +905,244 @@ def get_dataset_compatibility(dataset_id: str):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/pronostic/synthese")
-def get_pronostic_bd():
+def get_pronostic_bd(user_id: int = Query(...)):
     with db_session() as conn:
+        ent_row = conn.execute(
+            "SELECT id_entreprise FROM utilisateur WHERE id_utilisateur = ?", (user_id,)
+        ).fetchone()
+        if not ent_row or not ent_row["id_entreprise"]:
+            return {"machines": []}
+        ent_id = ent_row["id_entreprise"]
         rows = conn.execute("""
+            WITH ent_machines AS (
+                SELECT m.id_machine FROM machine m
+                JOIN atelier a ON m.id_atelier = a.id_atelier
+                JOIN usine u ON a.id_usine = u.id_usine
+                WHERE u.id_entreprise = ?
+            )
             SELECT m.code_machine AS machine_id, m.nom_machine AS machine_name,
-                   COALESCE(k.asset_health_index, 50) AS health_index,
-                   COALESCE(p.drbf_jours, 30) AS rul_days,
-                   COALESCE(p.precision_estimee_pct, 80) AS rul_confidence,
-                   COALESCE((SELECT v_rms_mm_s FROM mesure_globale WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1), 3.0) AS vrms_current,
-                   COALESCE((SELECT timestamp_mesure FROM mesure_globale WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1), datetime('now')) AS last_updated
+                   k.asset_health_index AS health_index,
+                   p.drbf_jours AS rul_days,
+                   p.precision_estimee_pct AS rul_confidence,
+                   (SELECT v_rms_mm_s FROM mesure_globale WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1) AS vrms_current,
+                   (SELECT timestamp_mesure FROM mesure_globale WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1) AS last_updated,
+                   CASE WHEN p.drbf_jours IS NOT NULL THEN 1 ELSE 0 END AS has_pronostic_data,
+                   CASE WHEN k.asset_health_index IS NOT NULL THEN 1 ELSE 0 END AS has_health_data
             FROM machine m
             LEFT JOIN pronostic_drbf p ON p.id_machine = m.id_machine
-            LEFT JOIN kpi_journalier k ON k.id_machine = m.id_machine AND k.date_kpi = (SELECT MAX(date_kpi) FROM kpi_journalier WHERE id_machine=m.id_machine)
-            WHERE m.statut != 'hors_service'
+            LEFT JOIN kpi_journalier k ON k.id_machine = m.id_machine
+                AND k.date_kpi = (SELECT MAX(date_kpi) FROM kpi_journalier WHERE id_machine = m.id_machine)
+            WHERE m.id_machine IN (SELECT id_machine FROM ent_machines)
+              AND m.statut != 'hors_service'
             ORDER BY COALESCE(p.drbf_jours, 999) ASC
-        """).fetchall()
+        """, (ent_id,)).fetchall()
     return {"machines": rows_to_list(rows)}
 
 
-@router.get("/kpis/synthese")
-def get_kpis_bd():
+@router.get("/pronostic/historique/{machine_id}")
+def get_machine_historique(machine_id: str, user_id: int = Query(...)):
+    """60 dernières mesures V-RMS + health_index réels pour une machine (filtre entreprise)."""
     with db_session() as conn:
+        ent_row = conn.execute(
+            "SELECT id_entreprise FROM utilisateur WHERE id_utilisateur = ?", (user_id,)
+        ).fetchone()
+        if not ent_row or not ent_row["id_entreprise"]:
+            return {"historique": []}
+        ent_id = ent_row["id_entreprise"]
+        rows = conn.execute("""
+            WITH ent_machines AS (
+                SELECT m.id_machine, m.code_machine FROM machine m
+                JOIN atelier a ON m.id_atelier = a.id_atelier
+                JOIN usine u ON a.id_usine = u.id_usine
+                WHERE u.id_entreprise = ?
+            )
+            SELECT mg.timestamp_mesure AS ts, mg.v_rms_mm_s AS vrms,
+                   k.asset_health_index AS health_index
+            FROM mesure_globale mg
+            JOIN ent_machines em ON mg.id_machine = em.id_machine
+            LEFT JOIN kpi_journalier k
+                ON k.id_machine = mg.id_machine
+                AND k.date_kpi = date(mg.timestamp_mesure)
+            WHERE em.code_machine = ?
+            ORDER BY mg.timestamp_mesure DESC
+            LIMIT 60
+        """, (ent_id, machine_id)).fetchall()
+    return {"historique": list(reversed(rows_to_list(rows)))}
+
+
+@router.get("/kpis/synthese")
+def get_kpis_bd(user_id: int = Query(...)):
+    with db_session() as conn:
+        ent_row = conn.execute(
+            "SELECT id_entreprise FROM utilisateur WHERE id_utilisateur = ?", (user_id,)
+        ).fetchone()
+        if not ent_row or not ent_row["id_entreprise"]:
+            return {}
+        ent_id = ent_row["id_entreprise"]
         row = conn.execute("""
-            SELECT ROUND(AVG(mtbf_heures),0) AS mtbf, ROUND(AVG(mttr_heures),1) AS mttr,
-                   ROUND(AVG(disponibilite_pct),1) AS disponibilite, ROUND(AVG(trs_oee_pct),1) AS oee
-            FROM kpi_journalier WHERE date_kpi >= date('now','-30 days')
-        """).fetchone()
+            WITH ent_machines AS (
+                SELECT m.id_machine FROM machine m
+                JOIN atelier a ON m.id_atelier = a.id_atelier
+                JOIN usine u ON a.id_usine = u.id_usine
+                WHERE u.id_entreprise = ?
+            )
+            SELECT
+                ROUND(AVG(mtbf_heures), 0) AS mtbf,
+                ROUND(AVG(mttr_heures), 1) AS mttr,
+                ROUND(AVG(disponibilite_pct), 1) AS disponibilite,
+                ROUND(AVG(trs_oee_pct), 1) AS oee,
+                CASE
+                    WHEN SUM(nb_pannes) + SUM(nb_pannes_evitees) > 0
+                    THEN ROUND(100.0 * SUM(nb_pannes_evitees) / (SUM(nb_pannes) + SUM(nb_pannes_evitees)), 1)
+                    ELSE NULL
+                END AS taux_detection
+            FROM kpi_journalier
+            WHERE id_machine IN (SELECT id_machine FROM ent_machines)
+              AND date_kpi >= date('now', '-30 days')
+        """, (ent_id,)).fetchone()
     return dict(row) if row else {}
 
 
 @router.get("/parc/synthese")
-def get_parc_bd():
+def get_parc_bd(user_id: int = Query(...)):
     with db_session() as conn:
+        ent_row = conn.execute(
+            "SELECT id_entreprise FROM utilisateur WHERE id_utilisateur = ?", (user_id,)
+        ).fetchone()
+        if not ent_row or not ent_row["id_entreprise"]:
+            return {"machines": []}
+        ent_id = ent_row["id_entreprise"]
         rows = conn.execute("""
             SELECT m.code_machine AS code, m.nom_machine AS nom, m.type_machine AS type,
                    a.nom_atelier AS atelier, m.statut,
                    COALESCE(ci.groupe, 'II') AS classe_iso,
                    CAST(julianday('now') - julianday(COALESCE(m.annee_mise_en_service,2020)||'-01-01') AS INTEGER) AS age_jours,
                    (SELECT COUNT(*) FROM capteur WHERE id_machine=m.id_machine) AS nb_capteurs,
-                   COALESCE((SELECT zone_iso_calculee FROM mesure_globale WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1), 'B') AS zone_iso,
-                   COALESCE((SELECT timestamp_mesure FROM mesure_globale WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1), datetime('now')) AS derniere_mesure
-            FROM machine m JOIN atelier a ON m.id_atelier=a.id_atelier LEFT JOIN classe_iso ci ON m.id_classe_iso=ci.id_classe
+                   COALESCE((SELECT zone_iso_calculee FROM mesure_globale
+                              WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1), 'B') AS zone_iso,
+                   (SELECT timestamp_mesure FROM mesure_globale
+                    WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1) AS derniere_mesure
+            FROM machine m
+            JOIN atelier a ON m.id_atelier = a.id_atelier
+            JOIN usine u ON a.id_usine = u.id_usine
+            LEFT JOIN classe_iso ci ON m.id_classe_iso = ci.id_classe
+            WHERE u.id_entreprise = ?
             ORDER BY m.code_machine
-        """).fetchall()
+        """, (ent_id,)).fetchall()
     return {"machines": rows_to_list(rows)}
 
 
-@router.get("/parc/capteurs")
-def get_parc_capteurs_bd():
+@router.get("/parc/machine/{code}")
+def get_machine_detail(code: str, user_id: int = Query(...)):
+    """Détail d'une machine : capteurs, défauts actifs, 5 dernières mesures."""
     with db_session() as conn:
+        ent_row = conn.execute(
+            "SELECT id_entreprise FROM utilisateur WHERE id_utilisateur = ?", (user_id,)
+        ).fetchone()
+        if not ent_row or not ent_row["id_entreprise"]:
+            return {"capteurs": [], "defauts": [], "dernieres_mesures": []}
+        ent_id = ent_row["id_entreprise"]
+        machine_row = conn.execute("""
+            SELECT m.id_machine FROM machine m
+            JOIN atelier a ON m.id_atelier = a.id_atelier
+            JOIN usine u ON a.id_usine = u.id_usine
+            WHERE m.code_machine = ? AND u.id_entreprise = ?
+        """, (code, ent_id)).fetchone()
+        if not machine_row:
+            return {"capteurs": [], "defauts": [], "dernieres_mesures": []}
+        mid = machine_row["id_machine"]
+        capteurs = rows_to_list(conn.execute(
+            "SELECT type_capteur AS type, position_montage AS position, statut, niveau_batterie_pct AS batterie FROM capteur WHERE id_machine = ?",
+            (mid,)
+        ).fetchall())
+        defauts = rows_to_list(conn.execute(
+            "SELECT type_defaut AS type, gravite AS severite FROM defaut_detecte WHERE id_machine = ? AND statut = 'actif'",
+            (mid,)
+        ).fetchall())
+        mesures = rows_to_list(conn.execute(
+            "SELECT date(timestamp_mesure) AS date, v_rms_mm_s AS vrms, zone_iso_calculee AS zone FROM mesure_globale WHERE id_machine = ? ORDER BY timestamp_mesure DESC LIMIT 5",
+            (mid,)
+        ).fetchall())
+    return {"capteurs": capteurs, "defauts": defauts, "dernieres_mesures": mesures}
+
+
+@router.get("/parc/capteurs")
+def get_parc_capteurs_bd(user_id: int = Query(...)):
+    with db_session() as conn:
+        ent_row = conn.execute(
+            "SELECT id_entreprise FROM utilisateur WHERE id_utilisateur = ?", (user_id,)
+        ).fetchone()
+        if not ent_row or not ent_row["id_entreprise"]:
+            return {"capteurs": []}
+        ent_id = ent_row["id_entreprise"]
         rows = conn.execute("""
             SELECT c.code_capteur AS id, m.code_machine AS machine_id, m.nom_machine AS machine_nom,
                    c.type_capteur AS type, c.position_montage AS position, c.statut,
                    c.niveau_batterie_pct AS batterie,
-                   COALESCE((SELECT timestamp_mesure FROM mesure_globale WHERE id_capteur=c.id_capteur ORDER BY timestamp_mesure DESC LIMIT 1), datetime('now')) AS derniere_mesure,
-                   '1 kHz' AS freq_acq,
+                   (SELECT timestamp_mesure FROM mesure_globale WHERE id_capteur=c.id_capteur ORDER BY timestamp_mesure DESC LIMIT 1) AS derniere_mesure,
+                   (SELECT ca.frequence_echantillonnage_hz FROM configuration_acquisition ca WHERE ca.id_capteur=c.id_capteur LIMIT 1) AS freq_acq,
                    COALESCE((SELECT COUNT(*) FROM mesure_globale WHERE id_capteur=c.id_capteur AND timestamp_mesure>=datetime('now','-24 hours')),0) AS nb_mesures_24h
-            FROM capteur c JOIN machine m ON c.id_machine=m.id_machine ORDER BY c.code_capteur
-        """).fetchall()
+            FROM capteur c
+            JOIN machine m ON c.id_machine = m.id_machine
+            JOIN atelier a ON m.id_atelier = a.id_atelier
+            JOIN usine u ON a.id_usine = u.id_usine
+            WHERE u.id_entreprise = ?
+            ORDER BY c.code_capteur
+        """, (ent_id,)).fetchall()
     return {"capteurs": rows_to_list(rows)}
 
 
 @router.get("/parc/classification-vis")
-def get_parc_vis_bd():
+def get_parc_vis_bd(user_id: int = Query(...)):
     with db_session() as conn:
+        ent_row = conn.execute(
+            "SELECT id_entreprise FROM utilisateur WHERE id_utilisateur = ?", (user_id,)
+        ).fetchone()
+        if not ent_row or not ent_row["id_entreprise"]:
+            return {"machines": []}
+        ent_id = ent_row["id_entreprise"]
         rows = conn.execute("""
             SELECT m.code_machine AS machine_id, m.nom_machine AS machine_nom,
-                   COALESCE((SELECT v_rms_mm_s FROM mesure_globale WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1), 2.5) AS vrms,
-                   COALESCE((SELECT zone_iso_calculee FROM mesure_globale WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1), 'B') AS zone_iso,
-                   'Stable' AS tendance_7j,
-                   CASE (SELECT zone_iso_calculee FROM mesure_globale WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1)
-                       WHEN 'D' THEN 'URGENCE' WHEN 'C' THEN 'CRITIQUE' WHEN 'B' THEN 'ATTENTION' ELSE 'NORMAL' END AS classe_vis,
-                   CASE (SELECT zone_iso_calculee FROM mesure_globale WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1)
-                       WHEN 'D' THEN 'Arret immediat' WHEN 'C' THEN 'Planifier intervention' ELSE 'Surveillance' END AS recommandation,
-                   CASE (SELECT zone_iso_calculee FROM mesure_globale WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1)
-                       WHEN 'D' THEN 'Creer BT' WHEN 'C' THEN 'Creer BT' ELSE 'Controle standard' END AS action
-            FROM machine m WHERE m.statut!='hors_service'
-            ORDER BY CASE (SELECT zone_iso_calculee FROM mesure_globale WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1)
-                WHEN 'D' THEN 1 WHEN 'C' THEN 2 ELSE 3 END
-        """).fetchall()
+                   (SELECT v_rms_mm_s FROM mesure_globale
+                    WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1) AS vrms,
+                   (SELECT zone_iso_calculee FROM mesure_globale
+                    WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1) AS zone_iso,
+                   CASE
+                       WHEN (SELECT COUNT(*) FROM mesure_globale WHERE id_machine=m.id_machine
+                             AND timestamp_mesure>=datetime('now','-7 days')) < 2 THEN 'Insuffisant'
+                       WHEN (SELECT AVG(v_rms_mm_s) FROM mesure_globale WHERE id_machine=m.id_machine
+                             AND timestamp_mesure>=datetime('now','-7 days'))
+                            > (SELECT AVG(v_rms_mm_s) FROM mesure_globale WHERE id_machine=m.id_machine
+                               AND timestamp_mesure<datetime('now','-7 days')
+                               AND timestamp_mesure>=datetime('now','-14 days')) * 1.05
+                            THEN 'Dégradation'
+                       WHEN (SELECT AVG(v_rms_mm_s) FROM mesure_globale WHERE id_machine=m.id_machine
+                             AND timestamp_mesure>=datetime('now','-7 days'))
+                            < (SELECT AVG(v_rms_mm_s) FROM mesure_globale WHERE id_machine=m.id_machine
+                               AND timestamp_mesure<datetime('now','-7 days')
+                               AND timestamp_mesure>=datetime('now','-14 days')) * 0.95
+                            THEN 'Amélioration'
+                       ELSE 'Stable'
+                   END AS tendance_7j,
+                   CASE (SELECT zone_iso_calculee FROM mesure_globale
+                         WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1)
+                       WHEN 'D' THEN 'URGENCE' WHEN 'C' THEN 'CRITIQUE'
+                       WHEN 'B' THEN 'ATTENTION' WHEN 'A' THEN 'NORMAL'
+                       ELSE NULL END AS classe_vis,
+                   CASE (SELECT zone_iso_calculee FROM mesure_globale
+                         WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1)
+                       WHEN 'D' THEN 'Arret immediat' WHEN 'C' THEN 'Planifier intervention'
+                       ELSE 'Surveillance' END AS recommandation,
+                   CASE (SELECT zone_iso_calculee FROM mesure_globale
+                         WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1)
+                       WHEN 'D' THEN 'Creer BT' WHEN 'C' THEN 'Creer BT'
+                       ELSE 'Controle standard' END AS action
+            FROM machine m
+            JOIN atelier a ON m.id_atelier = a.id_atelier
+            JOIN usine u ON a.id_usine = u.id_usine
+            WHERE m.statut != 'hors_service' AND u.id_entreprise = ?
+            ORDER BY CASE (SELECT zone_iso_calculee FROM mesure_globale
+                WHERE id_machine=m.id_machine ORDER BY timestamp_mesure DESC LIMIT 1)
+                WHEN 'D' THEN 1 WHEN 'C' THEN 2 WHEN 'B' THEN 3 WHEN 'A' THEN 4 ELSE 5 END
+        """, (ent_id,)).fetchall()
     return {"machines": rows_to_list(rows)}

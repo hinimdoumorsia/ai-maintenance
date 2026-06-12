@@ -11,7 +11,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from db.database import init_db
+from db.database import init_db, migrate_db
 from api import dashboard, donnees, admin, maintenance, chatbot, auth, predictions, tools, agents
 from api.chatbot import init_chatbot
 
@@ -37,6 +37,7 @@ app.add_middleware(
 @app.on_event("startup")
 def startup_event():
     init_db()
+    migrate_db()
     init_chatbot()
 
 # Routes

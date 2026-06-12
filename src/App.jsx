@@ -15,7 +15,6 @@ import AgentsPage from "./pages/Agents/index";
 import OutilsPage from './pages/Outils';
 import ParametresPage from './pages/Parametres';
 import MaintenancePage from './pages/Maintenance';
-import AideDocumentationPage from './pages/AideDocumentation';
 import ChatWidget from './components/chatbot/ChatWidget';
 
 /* ── Protected Routes wrapper ── */
@@ -78,7 +77,6 @@ const ProtectedApp = () => {
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/parametres" element={<ParametresPage />} />
           <Route path="/maintenance" element={<MaintenancePage />} />
-          <Route path="/aide-documentation" element={<AideDocumentationPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <ChatWidget />

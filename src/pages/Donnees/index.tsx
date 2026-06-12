@@ -3,7 +3,7 @@
 
 import React, { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Database, BarChart2, Clock, TrendingUp, Cpu, Wifi, Star, Upload, BookOpen, Library } from 'lucide-react';
+import { Database, BarChart2, Clock, TrendingUp, Cpu, Wifi, Star, Upload } from 'lucide-react';
 import { useDatasets } from '../../contexts/DatasetContext';
 import AppLayout from '../../components/AppLayout';
 import './donnees.css';
@@ -16,8 +16,6 @@ import DonneesParc from './components/DonneesParc';
 import CapteurIoT from './components/CapteurIoT';
 import ClassificationVIS from './components/ClassificationVIS';
 import AnalyseVibratoire from './components/AnalyseVibratoire';
-import DocumentationPage from './components/DocumentationPage';
-import DocsTechniques from './components/DocsTechniques';
 
 
 /* ─── Options d'analyse ─────────────────────────────────── */
@@ -29,9 +27,7 @@ type AnalyseId =
   | 'kpis'
   | 'machines'
   | 'capteurs'
-  | 'vis'
-  | 'documentation'
-  | 'docs-tech';
+  | 'vis';
 
 const NAV_GROUPS: {
   label: string;
@@ -60,13 +56,6 @@ const NAV_GROUPS: {
       { id: 'vis',      label: 'Classification VIS', icon: Star },
     ],
   },
-  {
-    label: 'Aide',
-    items: [
-      { id: 'documentation', label: 'Documentation',      icon: BookOpen },
-      { id: 'docs-tech',     label: 'Docs techniques PDF', icon: Library },
-    ],
-  },
 ];
 
 /* ─── DonneesPage ────────────────────────────────────────── */
@@ -75,7 +64,7 @@ const DonneesPage: React.FC = () => {
   const { datasets } = useDatasets();
 
   /* Tab routing via URL (?tab=vibratoire) */
-  const VALID_IDS: AnalyseId[] = ['default', 'chargement', 'vibratoire', 'pronostic', 'kpis', 'machines', 'capteurs', 'vis', 'documentation', 'docs-tech'];
+  const VALID_IDS: AnalyseId[] = ['default', 'chargement', 'vibratoire', 'pronostic', 'kpis', 'machines', 'capteurs', 'vis'];
   const rawTab = searchParams.get('tab') as AnalyseId | null;
   const analyse: AnalyseId = rawTab && VALID_IDS.includes(rawTab) ? rawTab : 'default';
   const setAnalyse = (id: AnalyseId) => setSearchParams({ tab: id }, { replace: false });
@@ -86,8 +75,6 @@ const DonneesPage: React.FC = () => {
     zoneD: 0,  // populated by ClassificationVIS / VIS data if needed
   }), [datasets]);
 
-  const activeOption = NAV_GROUPS.flatMap(g => g.items).find(o => o.id === analyse);
-
   return (
     <AppLayout
       title="Données & Prédiction"
@@ -96,60 +83,61 @@ const DonneesPage: React.FC = () => {
     >
       <div className="donnees-main">
 
-        {/* ── Navbar horizontale ── */}
-        <nav className="donnees-navbar">
+        {/* ── Sidebar verticale secondaire ── */}
+        <aside className="donnees-subnav" aria-label="Navigation Données">
           {NAV_GROUPS.map((group, gi) => (
-            <div className="donnees-navbar-group" key={gi}>
-              <span className="donnees-navbar-group-label">{group.label}</span>
-              <div className="donnees-navbar-items">
+            <div className="donnees-subnav-group" key={gi}>
+              <h4 className="donnees-subnav-group-label">{group.label}</h4>
+              <ul className="donnees-subnav-items">
                 {group.items.map(item => {
                   const Icon = item.icon;
                   const isActive = analyse === item.id;
+                  const badgeCount = item.badgeKey
+                    ? badges[item.badgeKey as keyof typeof badges]
+                    : 0;
                   return (
-                    <button
-                      key={item.id}
-                      onClick={() => setAnalyse(item.id)}
-                      className={`donnees-nav-btn${isActive ? ' active' : ''}`}
-                    >
-                      <Icon size={14} />
-                      {item.label}
-                      {item.badgeKey && badges[item.badgeKey as keyof typeof badges] > 0 && (
-                        <span className={`donnees-nav-badge${isActive ? ' active' : ''}`}>
-                          {badges[item.badgeKey as keyof typeof badges]}
-                        </span>
-                      )}
-                    </button>
+                    <li key={item.id}>
+                      <button
+                        onClick={() => setAnalyse(item.id)}
+                        className={`donnees-subnav-item${isActive ? ' active' : ''}`}
+                        aria-current={isActive ? 'page' : undefined}
+                      >
+                        <Icon size={15} className="donnees-subnav-item-icon" />
+                        <span className="donnees-subnav-item-label">{item.label}</span>
+                        {badgeCount > 0 && (
+                          <span className={`donnees-subnav-badge${isActive ? ' active' : ''}`}>
+                            {badgeCount}
+                          </span>
+                        )}
+                      </button>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             </div>
           ))}
-        </nav>
+        </aside>
 
-          {/* ── Zone principale ── */}
-          <div className="donnees-analyse-content">
-            {analyse === 'chargement' ? (
-              <ChargementPage />
-            ) : analyse === 'default' ? (
-              <VueGenerale />
-            ) : analyse === 'pronostic' ? (
-              <PronosticPage />
-            ) : analyse === 'kpis' ? (
-              <KPIsPage />
-            ) : analyse === 'machines' ? (
-              <DonneesParc />
-            ) : analyse === 'capteurs' ? (
-              <CapteurIoT />
-            ) : analyse === 'vis' ? (
-              <ClassificationVIS />
-            ) : analyse === 'vibratoire' ? (
-              <AnalyseVibratoire />
-            ) : analyse === 'documentation' ? (
-              <DocumentationPage />
-            ) : analyse === 'docs-tech' ? (
-              <DocsTechniques />
-            ) : null}
-          </div>
+        {/* ── Zone principale ── */}
+        <div className="donnees-analyse-content">
+          {analyse === 'chargement' ? (
+            <ChargementPage />
+          ) : analyse === 'default' ? (
+            <VueGenerale />
+          ) : analyse === 'pronostic' ? (
+            <PronosticPage />
+          ) : analyse === 'kpis' ? (
+            <KPIsPage />
+          ) : analyse === 'machines' ? (
+            <DonneesParc />
+          ) : analyse === 'capteurs' ? (
+            <CapteurIoT />
+          ) : analyse === 'vis' ? (
+            <ClassificationVIS />
+          ) : analyse === 'vibratoire' ? (
+            <AnalyseVibratoire />
+          ) : null}
+        </div>
 
       </div>
     </AppLayout>

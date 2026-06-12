@@ -53,6 +53,26 @@ def init_db():
         print(f"[DB] BD existante : {DB_PATH}")
 
 
+def migrate_db():
+    """Ajoute les colonnes manquantes à la BD existante (idempotent)."""
+    migrations = [
+        "ALTER TABLE dataset ADD COLUMN vitesse_rpm REAL",
+        "ALTER TABLE dataset ADD COLUMN nb_paires_poles INTEGER",
+        "ALTER TABLE dataset ADD COLUMN nb_dents_engrenage INTEGER",
+        "ALTER TABLE dataset ADD COLUMN uploaded_by INTEGER",
+        "ALTER TABLE machine ADD COLUMN origine_dataset TEXT",
+        "ALTER TABLE capteur ADD COLUMN origine_dataset TEXT",
+        "ALTER TABLE entreprise ADD COLUMN logo_url TEXT",
+        "ALTER TABLE entreprise ADD COLUMN document_descriptif_url TEXT",
+    ]
+    with db_session() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(sql)
+            except Exception:
+                pass  # Colonne déjà présente
+
+
 def get_dataset_paths(dataset_id: str) -> dict:
     """Retourne les chemins des sous-dossiers pour un dataset donné.
     Crée les dossiers s'ils n'existent pas."""

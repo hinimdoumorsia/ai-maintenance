@@ -179,10 +179,10 @@ const BonsDeTravail: React.FC<BonsDeTravailProps> = ({ data, loading, onRefresh 
             filename={`bons-travail-${new Date().toISOString().slice(0, 19)}.csv`}
             className="export-btn"
             style={{
-              background: "#6b7280",
+              background: "var(--theme-bg-hover)",
               padding: "4px 10px",
               borderRadius: 6,
-              color: "white",
+              color: "var(--theme-text)",
               fontSize: 11,
               textDecoration: "none",
               display: "inline-flex",
@@ -192,7 +192,7 @@ const BonsDeTravail: React.FC<BonsDeTravailProps> = ({ data, loading, onRefresh 
           >
             <FileText size={12} /> Exporter CSV
           </CSVLink>
-          <span style={{ fontSize: 11, color: "#9ca3af" }}>
+          <span style={{ fontSize: 11, color: "var(--theme-text-faint)" }}>
             {filtered.length} / {localData.length} BT
           </span>
         </div>
@@ -270,7 +270,7 @@ const BonsDeTravail: React.FC<BonsDeTravailProps> = ({ data, loading, onRefresh 
             <div className="maint-bt-type">{bt.titre}</div>
           </div>
 
-          <span style={{ fontSize: 11, color: "#6b7280" }}>{bt.nom_atelier ?? "—"}</span>
+          <span style={{ fontSize: 11, color: "var(--theme-text-muted)" }}>{bt.nom_atelier ?? "—"}</span>
 
           <span className={`maint-prio ${prioriteClass(bt.priorite)}`}>
             {prioriteLabel(bt.priorite).substring(0, 1)}P
@@ -302,7 +302,7 @@ const BonsDeTravail: React.FC<BonsDeTravailProps> = ({ data, loading, onRefresh 
             </select>
           </div>
 
-          <span style={{ fontSize: 11, color: "#374151" }}>{formatDateShort(bt.date_planifiee)}</span>
+          <span style={{ fontSize: 11, color: "var(--theme-text)" }}>{formatDateShort(bt.date_planifiee)}</span>
 
           {/* Sélecteur technicien */}
           <div style={{ fontSize: 11 }}>
@@ -314,10 +314,10 @@ const BonsDeTravail: React.FC<BonsDeTravailProps> = ({ data, loading, onRefresh 
               style={{
                 padding: "4px 8px",
                 borderRadius: 6,
-                border: "1px solid #d1d5db",
+                border: "1px solid var(--theme-border)",
                 fontSize: 11,
-                background: "white",
-                color: "#111827",
+                background: "var(--theme-input-bg)",
+                color: "var(--theme-text)",
                 cursor: "pointer",
                 width: "100%",
                 minWidth: 180,
@@ -387,8 +387,13 @@ const BonsDeTravail: React.FC<BonsDeTravailProps> = ({ data, loading, onRefresh 
                 <UserCheck size={11} /> Assigner
               </button>
             )}
-            
-            {/* Bouton Terminer */}
+
+            {bt.cout_estime != null && (
+              <span style={{ fontSize: 11, color: "var(--theme-text-muted)" }}>
+                {bt.cout_estime.toLocaleString("fr-FR")} €
+              </span>
+            )}
+
             {bt.statut !== "termine" && bt.statut !== "annule" && (
               <button
                 className="terminer-btn"

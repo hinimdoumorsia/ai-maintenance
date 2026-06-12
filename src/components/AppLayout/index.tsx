@@ -1,7 +1,7 @@
 // src/components/AppLayout/index.tsx
 // Sidebar partagée avec collapse + responsive pour toutes les pages
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Home, Database, GraduationCap, Package, Sparkles,
@@ -39,8 +39,18 @@ const AppLayout: React.FC<AppLayoutProps> = ({ title, subtitle, icon: PageIcon, 
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   
-  const [collapsed,   setCollapsed]   = useState(false);
-  const [mobileOpen,  setMobileOpen]  = useState(false);
+  const [collapsed,    setCollapsed]   = useState(false);
+  const [mobileOpen,   setMobileOpen]  = useState(false);
+  const [reviewCount,  setReviewCount] = useState(0);
+
+  useEffect(() => {
+    const session = JSON.parse(localStorage.getItem('ai-maint-session') || '{}');
+    if (!session.id) return;
+    fetch(`http://localhost:8000/api/admin/machines/needs-review-count?user_id=${session.id}`)
+      .then(r => r.json())
+      .then(d => setReviewCount(d.count || 0))
+      .catch(() => {});
+  }, []);
 
   const handleNav = (path: string) => {
     navigate(path);
@@ -102,6 +112,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ title, subtitle, icon: PageIcon, 
           >
             <Settings size={17} className="al-nav-icon" />
             <span className="al-nav-label">Paramètres</span>
+            {reviewCount > 0 && (
+              <span className="al-nav-badge" title={`${reviewCount} machine(s) à compléter`}>
+                {reviewCount}
+              </span>
+            )}
           </button>
 
           {/* Theme toggle */}
@@ -119,16 +134,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ title, subtitle, icon: PageIcon, 
             </span>
           </button>
 
-          <div className="al-help">
-            <p className="al-help-title">Besoin d'aide?</p>
-            <button
-              className="al-help-link"
-              onClick={() => handleNav('/aide-documentation')}
-              title={collapsed ? 'Aide & Documentation' : undefined}
-            >
-              Aide & Documentation
-            </button>
-          </div>
         </div>
       </aside>
 

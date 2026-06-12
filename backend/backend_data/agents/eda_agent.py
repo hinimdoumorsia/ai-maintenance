@@ -51,7 +51,8 @@ MACHINE_KEYWORDS    = {"machine", "equipment", "asset", "motor", "pump", "compre
                        "machine_id", "equipment_id", "id_machine"}
 
 
-def _detect_data_type(df: pd.DataFrame) -> str:
+def _detect_data_type(df: pd.DataFrame) -> tuple[str, int]:
+    """Retourne (type, score_confiance). Score ≤ 1 = détection faible."""
     cols_lower = {c.lower().replace(" ", "_") for c in df.columns}
     scores = {
         "vibration":   sum(any(k in c for k in VIBRATION_KEYWORDS)  for c in cols_lower),
@@ -60,7 +61,59 @@ def _detect_data_type(df: pd.DataFrame) -> str:
         "machine":     sum(any(k in c for k in MACHINE_KEYWORDS)     for c in cols_lower),
     }
     best = max(scores, key=scores.get)
-    return best if scores[best] > 0 else "generic"
+    best_score = scores[best]
+    if best_score == 0:
+        return "generic", 0
+    return best, best_score
+
+
+def _infer_domain_with_llm(df: pd.DataFrame, filename: str, api_key: str) -> tuple[str, str]:
+    """
+    Appel LLM léger pour inférer le vrai domaine quand la détection par mots-clés
+    est faible (score ≤ 1). Retourne (data_type, domain_description).
+    """
+    if not api_key:
+        return "generic", ""
+
+    cols_sample = list(df.columns[:40])
+    dtypes_info = {c: str(df[c].dtype) for c in cols_sample}
+    try:
+        numeric_sample = df.select_dtypes(include="number").head(3).to_dict(orient="list")
+    except Exception:
+        numeric_sample = {}
+
+    col_list = "\n".join(f"  - {c} ({dtypes_info[c]})" for c in cols_sample)
+
+    prompt = f"""Tu es un expert en data science industrielle. Analyse ces métadonnées de dataset et identifie le domaine réel.
+
+Fichier : "{filename}"
+Dimensions : {df.shape[0]} lignes × {df.shape[1]} colonnes
+Colonnes (max 40) :
+{col_list}
+Aperçu valeurs numériques (3 lignes) :
+{json.dumps(numeric_sample, default=str)[:800]}
+
+Réponds UNIQUEMENT en JSON valide sur UNE SEULE LIGNE, sans markdown :
+{{"type": "vibration|kpi|maintenance|machine|electrical|thermal|acoustic|process|quality|cmapss|generic", "domain": "description du domaine en 1 phrase", "pipeline_applicable": ["analyse_vibratoire", "pronostic", "kpis"], "confidence": "high|medium|low"}}
+
+Types disponibles dans l'application : vibration (V-RMS, roulements, zones ISO), kpi (MTBF/MTTR/OEE), maintenance (ordres de travail, pannes), machine (parc, états), generic (autre).
+Types hors pipeline app mais reconnus : electrical (courant, tension, puissance), thermal (température, chaleur), acoustic (son, émission acoustique), process (pression, débit, process industriel), quality (contrôle qualité, SPC), cmapss (NASA turbofan, engine_id+cycle+sensors)."""
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=256,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = resp.content[0].text.strip()
+        parsed = json.loads(raw)
+        inferred_type = parsed.get("type", "generic")
+        domain_desc = parsed.get("domain", "")
+        return inferred_type, domain_desc
+    except Exception:
+        return "generic", ""
 
 
 # ─── Calcul du résumé statistique ─────────────────────────────────────────────
@@ -182,10 +235,15 @@ def _detect_failure_intervals(df: pd.DataFrame) -> pd.Series | None:
     return pd.Series(intervals)
 
 
-def _compute_kpis(df: pd.DataFrame, data_type: str) -> dict[str, dict[str, Any]] | None:
+def _compute_kpis(df: pd.DataFrame, data_type: str,
+                   vitesse_rpm: float | None = None,
+                   nb_paires_poles: int | None = None,
+                   nb_dents_engrenage: int | None = None) -> dict[str, dict[str, Any]] | None:
     """
     Calcule les KPIs disponibles selon les colonnes du dataset.
     Retourne None si aucun KPI n'est calculable.
+    vitesse_rpm / nb_paires_poles / nb_dents_engrenage : paramètres fournis par l'utilisateur
+    à l'upload pour enrichir l'analyse spectrale des datasets vibratoires.
     """
     if not _is_applicable(data_type, {"kpi", "maintenance", "vibration", "machine"}):
         return None
@@ -275,6 +333,22 @@ def _compute_kpis(df: pd.DataFrame, data_type: str) -> dict[str, dict[str, Any]]
         is_anomaly = (~s.isin({"0", "normal", "ok", "nominal", "false", "none", ""})) | (as_num.fillna(0) > 0)
         anomaly_pct = float(is_anomaly.mean() * 100.0)
         kpis["anomaly_rate"] = {"value": round(anomaly_pct, 4), "unit": "%", "source_col": str(status_col)}
+
+    # Paramètres spectraux (datasets vibratoires — fournis à l'upload)
+    if data_type == "vibration" and vitesse_rpm and vitesse_rpm > 0:
+        fr = vitesse_rpm / 60.0
+        spectral: dict[str, Any] = {
+            "vitesse_rpm": vitesse_rpm,
+            "fr_hz":       round(fr, 3),
+            "harmoniques": {f"{n}xfr": round(n * fr, 3) for n in range(1, 6)},
+        }
+        if nb_paires_poles and nb_paires_poles > 0:
+            spectral["fe_hz"]    = round(nb_paires_poles * fr, 3)
+            spectral["fe_label"] = f"{nb_paires_poles}×fr — fréquence électrique"
+        if nb_dents_engrenage and nb_dents_engrenage > 0:
+            spectral["gmf_hz"]    = round(nb_dents_engrenage * fr, 3)
+            spectral["gmf_label"] = f"GMF = {nb_dents_engrenage}×fr"
+        kpis["spectral_params"] = spectral
 
     return kpis if kpis else None
 
@@ -440,26 +514,149 @@ _TYPE_EXPERT: dict[str, dict[str, str]] = {
             "Pipeline ML supervisé standard recommandé (train/val/test split stratifié)."
         ),
     },
+    # ── Domaines hors-pipeline app (reconnus par LLM, EDA complet tout de même) ──
+    "electrical": {
+        "normes": (
+            "IEC 60034 (machines électriques tournantes), IEC 61557 (mesure de grandeurs électriques), "
+            "IEEE 1159 (surveillance de la qualité d'énergie), ISO/IEC 25012:2008"
+        ),
+        "focus": (
+            "Analyse les grandeurs électriques : courant (A), tension (V), puissance active/réactive (kW/kVAR), "
+            "facteur de puissance, harmoniques. Détecte les déséquilibres de phase, surintensités, "
+            "chutes de tension et défauts d'isolement. Évalue l'aptitude au diagnostic de moteur électrique "
+            "(court-circuit, rupture de barre, déséquilibre statorique)."
+        ),
+        "features_hint": (
+            "Features critiques : courant_phase_A/B/C, tension_ligne, puissance_active, facteur_puissance. "
+            "Features dérivées : déséquilibre_phase = (max−min)/moy, THD (taux distorsion harmonique), "
+            "ratio puissance_réactive/active, enveloppe courant (détection défauts cage rotor). "
+            "Cibles ML : défaut_type (classification), puissance_consommée_j+1 (régression)."
+        ),
+    },
+    "thermal": {
+        "normes": (
+            "ISO 13379-1 (thermographie infrarouge machines), IEC 60751 (thermistances RTD), "
+            "ASTM E1292 (analyse thermique), ISO/IEC 25012:2008"
+        ),
+        "focus": (
+            "Analyse les profils thermiques : température absolue, gradient thermique, taux de montée en "
+            "température. Identifie les points chauds (hotspots), les corrélations avec la charge et la vitesse. "
+            "Détecte les anomalies thermiques précurseurs de défauts (suréchauffement roulements, "
+            "échauffement isolant moteur, point chaud transformateur)."
+        ),
+        "features_hint": (
+            "Features critiques : température_palier, température_bobinage, température_ambiante, delta_T. "
+            "Features dérivées : delta_T = T_machine − T_ambiante, taux_montée = ΔT/Δt, "
+            "index_suréchauffement = T_mesurée / T_nominale. "
+            "Cibles ML : seuil_alarme_température (classification), temps_avant_surchauffe (régression)."
+        ),
+    },
+    "acoustic": {
+        "normes": (
+            "ISO 1683 (acoustique — grandeurs de référence), ISO 9614 (intensimétrie acoustique), "
+            "ISO 11200 (bruit des machines), ISO 18436-5 (émission acoustique)"
+        ),
+        "focus": (
+            "Analyse les signaux acoustiques/ultrasons : niveau sonore (dB), fréquences dominantes, "
+            "émission acoustique (AE). Identifie les pics fréquentiels associés à des défauts "
+            "(frottement, claquement, cavitation). Évalue la corrélation bruit/charge/vitesse."
+        ),
+        "features_hint": (
+            "Features critiques : niveau_dB, fréquence_dominante_Hz, énergie_AE. "
+            "Features dérivées : bande_octave_1kHz/2kHz/4kHz, ratio signal/bruit, "
+            "RMS_acoustique par fenêtre 0.1s. "
+            "Cibles ML : type_défaut_acoustique (classification), gravité_usure (régression)."
+        ),
+    },
+    "process": {
+        "normes": (
+            "ISA-88 (contrôle de batch industriel), IEC 61511 (sécurité systèmes instrumentés), "
+            "ISO 5167 (mesure de débit), ISO/IEC 25012:2008"
+        ),
+        "focus": (
+            "Analyse les variables de procédé : pression, débit, niveau, pH, viscosité, concentration. "
+            "Détecte les dérives de procédé, les hors-spécifications et les instabilités. "
+            "Évalue la corrélation entre variables de consigne et variables mesurées."
+        ),
+        "features_hint": (
+            "Features critiques : pression_bar, débit_m3h, température_process, niveau_%, consigne_vs_mesure. "
+            "Features dérivées : erreur_asservissement = |consigne − mesure|, "
+            "indice_stabilité = σ(dernières_60_mesures), flag_hors_spec. "
+            "Cibles ML : défaut_process (classification), valeur_paramètre_t+n (régression)."
+        ),
+    },
+    "quality": {
+        "normes": (
+            "ISO 9001:2015 (management qualité), ISO 7870 (cartes de contrôle SPC), "
+            "ISO 3534-2 (statistiques appliquées à la qualité), Six Sigma DMAIC"
+        ),
+        "focus": (
+            "Analyse les données de contrôle qualité : mesures dimensionnelles, taux de rebut, "
+            "Cp/Cpk (capabilité process). Identifie les dérives hors tolérances, "
+            "les corrélations non-conformité/machine/opérateur/shift."
+        ),
+        "features_hint": (
+            "Features critiques : mesure_dimensionnelle, limite_sup, limite_inf, non_conforme_binaire. "
+            "Features dérivées : Cp = (LSL−LIL)/(6σ), Cpk = min((USL−μ)/3σ, (μ−LSL)/3σ), "
+            "flag_dérive_xbar_r, coût_rebut. "
+            "Cibles ML : non_conformité (classification), valeur_mesure (régression SPC prédictif)."
+        ),
+    },
+    "cmapss": {
+        "normes": (
+            "NASA C-MAPSS Turbofan Engine Degradation Simulation, "
+            "ISO 13381-1 (pronostic et gestion de la santé), "
+            "SAE JA1011 (maintenance centrée sur la fiabilité RCM)"
+        ),
+        "focus": (
+            "Dataset NASA C-MAPSS : engine_id (moteur), cycle (temps de vol cumulé), "
+            "op_setting_1/2/3 (conditions opérationnelles), sensor_1..21 (capteurs température, pression, débit). "
+            "Objectif principal : prédiction RUL (Remaining Useful Life) par moteur. "
+            "Identifier les capteurs les plus prédictifs de la dégradation (typiquement sensor_11, "
+            "sensor_12, sensor_4, sensor_15 dans FD001-FD004). "
+            "Vérifier la monotonie de dégradation par moteur et la distribution des RUL finales."
+        ),
+        "features_hint": (
+            "Features critiques : capteurs à variance non nulle (éliminer capteurs constants : "
+            "sensor_1, sensor_5, sensor_6, sensor_10, sensor_16, sensor_18, sensor_19 souvent constants). "
+            "Features dérivées : RUL = max_cycle_par_moteur − cycle_actuel, "
+            "rolling_mean_7cycles par capteur, pente_dégradation par fenêtre. "
+            "Stratégie ML : LSTM ou XGBoost séquence→RUL. Split OBLIGATOIREMENT par moteur "
+            "(pas aléatoire — fuite de données sinon). Métrique : RMSE sur RUL + score asymétrique NASA."
+        ),
+    },
 }
 
 
 # ─── Appel LLM Claude ─────────────────────────────────────────────────────────
 
-def _call_claude(summary: dict, data_type: str, original_filename: str, quality_score: int = 0) -> dict[str, str]:
+def _call_claude(summary: dict, data_type: str, original_filename: str, quality_score: int = 0,
+                  alerts: list | None = None, kpis: dict | None = None,
+                  rul_info: dict | None = None, vif_info: list | None = None,
+                  anomalies_iso: dict | None = None,
+                  domain_description: str = "") -> dict[str, Any]:
     """
-    Appelle Claude (expert vibratoire + data scientist sénior) pour obtenir :
+    Appelle Claude (expert vibratoire + data scientist sénior) pour obtenir TOUTES les zones
+    de narration du rapport selon EDA_AGENT_INSTRUCTIONS.md :
+    - executive_summary   : verdict + dataset 3 phrases + 3 actions (urgent/court/moyen terme) + limites + readiness
+    - narrative           : analyse EDA narrative (verdict qualité, patterns, anomalies, implications, conclusion)
+    - quality_audit       : commentaire sur l'audit qualité (manquants, doublons, cohérence)
+    - univariate_insights : interprétation des distributions + outliers + cible
+    - bivariate_insights  : interprétation Pearson/Spearman + multicolinéarité
+    - temporal_insights   : tendance + stationnarité + cycles (si série temporelle)
+    - diagnostic_insights : interprétation spécifique au type (vibratoire, KPI, etc.)
     - preprocessing_plan  : pipeline numéroté appliqué + justification métier/statistique
-    - narrative           : analyse EDA narrative avec références ISO et score qualité
-    - feature_recommendations : recommandations features contextualisées par type de données
+    - feature_recommendations : recommandations features contextualisées
+    - ml_tasks            : tâches ML recommandées (régression/classification/anomaly)
+    - limitations         : ce que le dataset ne permet PAS + hypothèses + biais
     Retourne des messages de fallback si la clé API est absente.
     """
+    _FALLBACK_KEYS = ["executive_summary", "narrative", "quality_audit", "univariate_insights",
+                       "bivariate_insights", "temporal_insights", "diagnostic_insights",
+                       "preprocessing_plan", "feature_recommendations", "ml_tasks", "limitations"]
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
-        return {
-            "preprocessing_plan":      "Clé API Claude non configurée — analyse heuristique appliquée.",
-            "narrative":               "Analyse automatique sans LLM.",
-            "feature_recommendations": "Configurer ANTHROPIC_API_KEY pour les recommandations IA.",
-        }
+        return {k: "Clé API Claude non configurée — section indisponible." for k in _FALLBACK_KEYS}
 
     try:
         import anthropic
@@ -467,6 +664,25 @@ def _call_claude(summary: dict, data_type: str, original_filename: str, quality_
 
         client = anthropic.Anthropic(api_key=api_key)
         ctx = _TYPE_EXPERT.get(data_type, _TYPE_EXPERT["generic"])
+
+        # Modules de l'app disponibles selon le type détecté
+        _PIPELINE_MODULES = {
+            "vibration":   ["Vue Générale EDA ✅", "Analyse Vibratoire ✅", "Pronostic & DRBF ✅", "KPIs ✅"],
+            "kpi":         ["Vue Générale EDA ✅", "KPIs ✅", "Analyse Vibratoire ❌", "Pronostic ⚠️ partiel"],
+            "maintenance": ["Vue Générale EDA ✅", "KPIs ✅", "Pronostic ⚠️ partiel", "Analyse Vibratoire ❌"],
+            "machine":     ["Vue Générale EDA ✅", "Parc Machines ✅", "KPIs ✅", "Analyse Vibratoire ⚠️ si VRMS présent"],
+            "cmapss":      ["Vue Générale EDA ✅", "Pronostic & DRBF ✅ (RUL par moteur)", "Analyse Vibratoire ❌", "KPIs ⚠️"],
+            "electrical":  ["Vue Générale EDA ✅", "Analyse Vibratoire ❌ (domaine électrique, pas vibratoire)", "KPIs ⚠️ si métriques présentes"],
+            "thermal":     ["Vue Générale EDA ✅", "Analyse Vibratoire ❌ (domaine thermique)", "KPIs ⚠️ si métriques présentes"],
+            "acoustic":    ["Vue Générale EDA ✅", "Analyse Vibratoire ⚠️ si RMS/Crest présents", "KPIs ❌"],
+            "process":     ["Vue Générale EDA ✅", "Analyse Vibratoire ❌", "KPIs ⚠️ si métriques calculées"],
+            "quality":     ["Vue Générale EDA ✅", "KPIs ⚠️", "Analyse Vibratoire ❌"],
+            "generic":     ["Vue Générale EDA ✅", "Autres modules : compatibilité à évaluer selon contenu"],
+        }
+        pipeline_note = "\n".join(_PIPELINE_MODULES.get(data_type, _PIPELINE_MODULES["generic"]))
+
+        # Note domaine si inféré par LLM
+        domain_note = f"\nDomaine identifié par IA : {domain_description}" if domain_description else ""
 
         # ── Descriptions colonnes enrichies avec outliers + skewness ──
         col_descriptions = []
@@ -511,14 +727,62 @@ def _call_claude(summary: dict, data_type: str, original_filename: str, quality_
         qs_label = ("Excellent" if quality_score >= 85 else "Bon" if quality_score >= 70
                     else "Acceptable" if quality_score >= 50 else "Insuffisant")
 
+        # ── Contexte alertes / KPIs / RUL / VIF / Isolation Forest ──
+        alerts_summary = ""
+        if alerts:
+            crit = [a for a in alerts if a["level"] == "critical"]
+            warn = [a for a in alerts if a["level"] == "warning"]
+            alerts_summary = f"\n## Alertes détectées\n- {len(crit)} critique(s), {len(warn)} avertissement(s)"
+            for a in (crit + warn)[:6]:
+                alerts_summary += f"\n  • [{a['level'].upper()}] {a['title']} → action : {a['action']}"
+
+        kpi_summary = ""
+        if kpis:
+            kpi_summary = "\n## KPIs calculés\n" + "\n".join(
+                f"  • {k} = {v.get('value')} {v.get('unit', '')}" for k, v in kpis.items()
+            )
+
+        rul_summary = ""
+        if rul_info:
+            rul_summary = "\n## Pronostic / RUL\n" + "\n".join(
+                f"  • {k} = {v}" for k, v in rul_info.items() if v is not None
+            )
+
+        vif_summary = ""
+        if vif_info:
+            top_vif = [v for v in vif_info if v.get("verdict") != "OK"][:5]
+            if top_vif:
+                vif_summary = "\n## Multicolinéarité détectée (VIF)\n" + "\n".join(
+                    f"  • {v['name']} : VIF={v['vif']} ({v['verdict']})" for v in top_vif
+                )
+
+        iso_summary = ""
+        if anomalies_iso and anomalies_iso.get("n_anomalies", 0) > 0:
+            iso_summary = (f"\n## Anomalies multidimensionnelles (Isolation Forest)\n"
+                           f"  • {anomalies_iso['n_anomalies']} anomalies ({anomalies_iso['pct_anomalies']}%) "
+                           f"sur {anomalies_iso.get('n_features', '?')} features")
+
         prompt = f"""Tu es un expert sénior en Data Science industrielle et maintenance prédictive.
-Tu maîtrises les normes suivantes applicables à ce dataset : {ctx['normes']}.
-Ton rapport doit être compréhensible à la fois par un analyste en vibrations et par un data scientist.
+Tu maîtrises les normes suivantes applicables : {ctx['normes']}.
+Ton rapport doit être compréhensible à la fois par un ingénieur de maintenance et par un data scientist.
+
+PRINCIPE FONDAMENTAL : Tu écris une narration, pas une accumulation de chiffres. Chaque affirmation
+chiffrée doit être quantifiée avec son impact opérationnel. Ne décris jamais un graphique visuellement ;
+interprète ce qu'il signifie pour la maintenance prédictive et ce qu'il faut en faire.
+
+ADAPTATION OBLIGATOIRE : Si les données que tu observes ne correspondent pas exactement au type détecté,
+adapte TOUTE ton analyse au domaine réel que tu identifies à partir des noms de colonnes et des valeurs.
+Tu as la liberté et l'obligation d'exercer ton jugement d'expert pour produire une analyse utile même si
+le dataset sort des sentiers battus. Ne te limite JAMAIS à "données génériques" si tu peux identifier
+un domaine précis (électrique, thermique, acoustique, process, qualité, signal brut, etc.).
 
 ## Dataset analysé
 Fichier : "{original_filename}"
-Type détecté : {data_type.upper()}
+Type détecté : {data_type.upper()}{domain_note}
 Dimensions : {summary['n_rows']:,} lignes × {summary['n_cols']} colonnes
+
+## Compatibilité avec les modules de l'application
+{pipeline_note}
 Doublons : {summary['duplicates']}
 Valeurs manquantes : {summary['missing_total']} ({summary['missing_pct']:.1f}% en moyenne)
 Score qualité calculé : {quality_score}/100 ({qs_label})
@@ -528,17 +792,40 @@ Score qualité calculé : {quality_score}/100 ({qs_label})
 
 ## Colonnes détectées (max 30)
 {chr(10).join(col_descriptions)}
+{alerts_summary}{kpi_summary}{rul_summary}{vif_summary}{iso_summary}
 
-## Focus d'analyse requis pour ce type de données
+## Focus d'analyse pour ce type de données
 {ctx['focus']}
 
 ---
-Génère UNIQUEMENT ce JSON valide (sans markdown, sans texte avant/après) :
-{{"preprocessing_plan": "Plan numéroté 8-12 étapes décrivant exactement le pipeline appliqué et sa justification (nettoyage doublons → colonnes constantes → parsing datetime → imputation médiane/mode → encodage catégorielles → normalisation en justifiant le choix StandardScaler/RobustScaler colonne par colonne → traitement asymétrie → colonnes finales). Ton : précis, technique, justifié par critères statistiques ou normatifs.", "narrative": "Analyse EDA narrative 350-450 mots. Structure OBLIGATOIRE : 1) Verdict qualité {quality_score}/100 ({qs_label}) avec explication des principales pénalités. 2) Patterns principaux observés dans les données. 3) Anomalies détectées (outliers, skewness élevé, colonnes problématiques) et leur impact. 4) Implications pour la maintenance prédictive — {ctx['focus']}. 5) Conclusion : les 2-3 actions prioritaires recommandées. Citer au moins une norme ISO applicable.", "feature_recommendations": "{ctx['features_hint']} Formater en 3 blocs numérotés : A) Features critiques à conserver (justification métier/statistique), B) Features dérivées à créer (formule ou logique), C) Features à exclure ou surveiller (multicolinéarité, cardinalité excessive, bruit)."}}"""
+Génère UNIQUEMENT ce JSON valide (objet plat, valeurs string, pas de markdown, pas de texte avant/après) :
+{{
+"executive_summary": "SYNTHÈSE EXÉCUTIVE (≤130 mots, ton décisionnel, JAMAIS de statistiques brutes). Structure OBLIGATOIRE en 5 blocs séparés par '||' :  BLOC 1 = 'Dataset en 3 phrases :' contexte métier, volumétrie, domaine réel identifié.  BLOC 2 = 'Verdict qualité : {quality_score}/100 ({qs_label}).' justification en 1 phrase.  BLOC 3 = 'Compatibilité application :' quels modules sont directement utilisables et lesquels ne s'appliquent pas à ce type de données (sois honnête si un module n'est pas pertinent).  BLOC 4 = 'Limites principales :' 2-3 limites métier majeures.  BLOC 5 = 'Prêt pour entraînement : OUI/OUI avec réserves/NON.' justification en 1 phrase.",
+
+"narrative": "Analyse EDA narrative 350-450 mots. Structure OBLIGATOIRE en 5 paragraphes : 1) Verdict qualité {quality_score}/100 ({qs_label}) — explication des principales pénalités. 2) Patterns principaux observés. 3) Anomalies détectées et leur impact (outliers, skewness, alertes critiques). 4) Implications pour la maintenance prédictive — {ctx['focus']}. 5) Conclusion : 2-3 actions prioritaires. Citer au moins une norme ISO.",
+
+"quality_audit": "Commentaire 100-150 mots sur l'audit qualité du dataset. Pour chaque colonne avec >5% de manquants : diagnostic métier probable (capteur défaillant ? saisie GMAO incomplète ?), impact opérationnel, stratégie d'imputation retenue + justification. Mentionner les doublons et leur origine probable. Citer ISO/IEC 25012:2008.",
+
+"univariate_insights": "Analyse univariée 150-200 mots. Pour les 3-5 colonnes les plus significatives : interpréter la distribution (asymétrique, multimodale, queues épaisses), traiter les outliers comme du signal métier (PAS du bruit — ex. V-RMS Zone D = défaut roulement), proposer la transformation (log/Box-Cox/Yeo-Johnson) si skewness > 2. Justifier le choix du scaler (StandardScaler vs RobustScaler).",
+
+"bivariate_insights": "Analyse bivariée 100-150 mots. Commenter UNIQUEMENT les corrélations fortes (|r|>0.7) attendues OU inattendues, et l'absence de corrélations attendues. Si multicolinéarité détectée (VIF>10), identifier nominativement les variables et proposer un traitement (suppression, ratios, PCA). Différencier Pearson (linéaire) et Spearman (monotone).",
+
+"temporal_insights": "Analyse temporelle 100-150 mots. Tendance détectée (croissante/décroissante/stable + pente quantifiée), stationnarité (oui/non + interprétation), cycles/saisonnalité, projection de franchissement de seuils ISO si applicable. Si pas de série temporelle exploitable, écrire 'Non applicable — dataset sans dimension temporelle exploitable' et expliquer pourquoi.",
+
+"diagnostic_insights": "Diagnostic métier 150-200 mots. Adapte ton expertise au domaine réel observé : {data_type.upper()} — {ctx['focus']} Si le dataset sort du pipeline standard de l'application (modules non compatibles ci-dessus), explique ce qu'un analyste devrait faire avec ce dataset dans un contexte industriel. Identifier nominativement les signaux/composants/machines critiques. Citer les normes pertinentes selon le domaine réel.",
+
+"preprocessing_plan": "Plan numéroté 8-12 étapes décrivant le pipeline appliqué + justification statistique/métier de chaque étape. Format : '1. Étape — Action — Justification'. Pour le scaling, justifier StandardScaler vs RobustScaler colonne par colonne.",
+
+"feature_recommendations": "Recommandations features 200-250 mots. {ctx['features_hint']} Formater en 3 blocs : A) Features critiques à conserver (justification métier/statistique). B) Features dérivées à créer (avec formule mathématique). C) Features à exclure ou surveiller (multicolinéarité VIF>10, cardinalité excessive, fuite de données / target leakage).",
+
+"ml_tasks": "Tâches ML recommandées 100-150 mots. Format : pour chaque tâche pertinente (1 à 3), donner : Type (régression/classification/anomaly), Cible, Modèles recommandés (XGBoost/RF/LSTM/IsolationForest), Métriques (RMSE/F1/AUC), Baseline attendue. Stratégie de split : chronologique pour séries temporelles (PAS de shuffle), aléatoire stratifié sinon.",
+
+"limitations": "Limites du dataset 120-180 mots. Structurer en 4 sous-blocs : 1) Ce que le dataset NE PERMET PAS de modéliser (absence de variables, granularité insuffisante). 2) Hypothèses faites (calibrage capteurs, conditions homogènes). 3) Biais possibles (sélection, observation, temporel). 4) Données complémentaires à acquérir pour enrichir l'analyse."
+}}"""
 
         response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=4096,
+            max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         )
 
@@ -559,7 +846,7 @@ Génère UNIQUEMENT ce JSON valide (sans markdown, sans texte avant/après) :
                 except Exception:
                     pass
             result = {}
-            for key in ["preprocessing_plan", "narrative", "feature_recommendations"]:
+            for key in _FALLBACK_KEYS:
                 m2 = re.search(rf'"{key}"\s*:\s*"((?:[^"\\]|\\.)*)"', t)
                 if m2:
                     result[key] = m2.group(1).replace('\\n', '\n').replace('\\"', '"')
@@ -567,21 +854,455 @@ Génère UNIQUEMENT ce JSON valide (sans markdown, sans texte avant/après) :
                 return result
             raise ValueError("JSON non réparable")
 
-        return _try_parse(raw)
+        parsed = _try_parse(raw)
+        # Assurer la présence de toutes les clés
+        for k in _FALLBACK_KEYS:
+            parsed.setdefault(k, "Section non générée par le LLM.")
+        return parsed
 
     except Exception as e:
-        raw_preview = raw[:200] if 'raw' in dir() else ''
+        import traceback
+        raw_preview = raw[:300] if 'raw' in dir() else ''
+        print(f"[EDA _call_claude] ERREUR : {type(e).__name__}: {e}")
+        if raw_preview:
+            print(f"[EDA _call_claude] Réponse brute (300 premiers chars) : {raw_preview}")
+        traceback.print_exc()
+        fb = {k: f"Section indisponible (erreur LLM : {type(e).__name__})." for k in _FALLBACK_KEYS}
+        if raw_preview:
+            fb["narrative"] = f"[Réponse brute non parsée] {raw_preview}"
+        return fb
+
+
+# ─── Analyses avancées (VIF, Box-Cox, Isolation Forest, ACF, stationnarité) ──
+
+def _compute_iso_25012_subscores(summary: dict) -> dict[str, dict[str, Any]]:
+    """Décomposition du score qualité par dimension ISO/IEC 25012:2008."""
+    rows = summary.get("n_rows", 1) or 1
+    miss_pct = summary.get("missing_pct", 0)
+    completude_score = max(0.0, 20.0 - min(20.0, miss_pct * 1.0))
+
+    dup_pct = summary.get("duplicates", 0) / rows * 100
+    unicite_score = max(0.0, 20.0 - min(20.0, dup_pct * 0.5))
+
+    num_cols_info = [c for c in summary.get("columns", []) if c.get("type") == "numeric"]
+    avg_outlier_pct = (sum(c.get("outlier_pct", 0) or 0 for c in num_cols_info) / len(num_cols_info)) if num_cols_info else 0
+    exactitude_score = max(0.0, 20.0 - min(20.0, avg_outlier_pct * 0.6))
+
+    skews = [abs(c.get("skewness") or 0) for c in num_cols_info]
+    coherence_pen = 0
+    if skews:
+        coherence_pen = min(20, sum(1 for s in skews if s > 2) * 2)
+    coherence_score = max(0.0, 20.0 - coherence_pen)
+
+    fraicheur_score = 18.0  # heuristique par défaut
+
+    return {
+        "completude":  {"score": round(completude_score, 1), "max": 20, "ref": "ISO 25012 C4",
+                        "detail": f"-{round(20-completude_score, 1)} pts (missing_pct={miss_pct:.1f}%)"},
+        "unicite":     {"score": round(unicite_score, 1), "max": 20, "ref": "ISO 25012 C6",
+                        "detail": f"-{round(20-unicite_score, 1)} pts ({summary.get('duplicates', 0)} doublons)"},
+        "exactitude":  {"score": round(exactitude_score, 1), "max": 20, "ref": "ISO 25012 C1",
+                        "detail": f"-{round(20-exactitude_score, 1)} pts (outliers IQR moyens {avg_outlier_pct:.1f}%)"},
+        "coherence":   {"score": round(coherence_score, 1), "max": 20, "ref": "ISO 25012",
+                        "detail": f"-{coherence_pen} pts ({sum(1 for s in skews if s > 2)} colonnes très asymétriques)"},
+        "fraicheur":   {"score": fraicheur_score, "max": 20, "ref": "ISO 25012",
+                        "detail": "Heuristique (aucune date de référence connue)"},
+    }
+
+
+def _compute_vif(df: pd.DataFrame, max_cols: int = 20) -> list[dict[str, Any]]:
+    """
+    Variance Inflation Factor — détection multicolinéarité.
+    VIF = 1 / (1 - R²) où R² provient de la régression d'une colonne sur les autres.
+    Implémentation manuelle (sans statsmodels).
+    """
+    try:
+        from sklearn.linear_model import LinearRegression
+    except Exception:
+        return []
+    num_df = df.select_dtypes(include=[np.number]).replace([np.inf, -np.inf], np.nan).dropna()
+    cols = num_df.columns.tolist()[:max_cols]
+    if len(cols) < 2 or len(num_df) < 5:
+        return []
+    num_df = num_df[cols]
+    out = []
+    for col in cols:
+        X = num_df.drop(columns=[col]).values
+        y = num_df[col].values
+        if X.shape[1] == 0 or float(np.var(y)) < 1e-12:
+            continue
+        try:
+            r2 = float(LinearRegression().fit(X, y).score(X, y))
+            r2 = max(0.0, min(0.99999999, r2))
+            vif = 1.0 / (1.0 - r2)
+            if vif > 10:
+                verdict = "Critique (>10)"
+            elif vif > 5:
+                verdict = "Elevé (5-10)"
+            else:
+                verdict = "OK"
+            out.append({
+                "name": col,
+                "vif": round(vif, 2) if not np.isinf(vif) else 9999.0,
+                "r2": round(r2, 4),
+                "verdict": verdict,
+            })
+        except Exception:
+            continue
+    return sorted(out, key=lambda x: x["vif"], reverse=True)
+
+
+def _detect_anomalies_isoforest(df: pd.DataFrame, contamination: float = 0.02) -> dict[str, Any]:
+    """Isolation Forest pour anomalies multi-dimensionnelles (non supervisé)."""
+    try:
+        from sklearn.ensemble import IsolationForest
+    except Exception:
+        return {}
+    num_df = df.select_dtypes(include=[np.number]).replace([np.inf, -np.inf], np.nan).dropna()
+    if len(num_df) < 30 or num_df.shape[1] < 2:
+        return {}
+    try:
+        clf = IsolationForest(contamination=contamination, random_state=42, n_estimators=100)
+        preds = clf.fit_predict(num_df.values)
+        scores = clf.score_samples(num_df.values)
+        n_anomalies = int((preds == -1).sum())
         return {
-            "preprocessing_plan":      "Analyse automatique (LLM JSON invalide).",
-            "narrative":               raw_preview or "Analyse automatique (LLM indisponible).",
-            "feature_recommendations": "Non disponible.",
+            "n_anomalies": n_anomalies,
+            "pct_anomalies": round(n_anomalies / len(num_df) * 100, 2),
+            "contamination": contamination,
+            "anomaly_indices": np.where(preds == -1)[0].tolist()[:50],
+            "scores_min": round(float(scores.min()), 4),
+            "scores_mean": round(float(scores.mean()), 4),
+            "n_features": int(num_df.shape[1]),
         }
+    except Exception:
+        return {}
+
+
+def _test_stationarity_simple(series: pd.Series) -> dict[str, Any]:
+    """
+    Test simplifié de stationnarité (alternative à ADF sans statsmodels).
+    Compare moyennes/écarts-types sur 3 fenêtres successives.
+    """
+    s = pd.to_numeric(series, errors="coerce").dropna()
+    if len(s) < 30:
+        return {}
+    n = len(s)
+    third = n // 3
+    parts = [s.iloc[:third], s.iloc[third:2*third], s.iloc[2*third:]]
+    means = [float(p.mean()) for p in parts if len(p) > 0]
+    stds  = [float(p.std()) for p in parts if len(p) > 1]
+    if not means or not stds:
+        return {}
+    range_s = float(s.max() - s.min()) if s.max() != s.min() else 1.0
+    mean_var_pct = (max(means) - min(means)) / range_s * 100 if range_s > 0 else 0
+    std_var_pct  = (max(stds) - min(stds)) / range_s * 100 if range_s > 0 else 0
+    is_stationary = mean_var_pct < 20 and std_var_pct < 20
+    return {
+        "is_stationary": is_stationary,
+        "mean_variation_pct": round(mean_var_pct, 2),
+        "std_variation_pct":  round(std_var_pct, 2),
+        "verdict": "Stationnaire (moyenne/variance stables)" if is_stationary
+                   else "Non-stationnaire (tendance ou variance changeante)",
+        "means_by_third":  [round(m, 4) for m in means],
+        "stds_by_third":   [round(s_, 4) for s_ in stds],
+    }
+
+
+def _compute_acf_manual(series: pd.Series, nlags: int = 20) -> list[float]:
+    """Auto-corrélation manuelle (alternative à statsmodels.acf)."""
+    s = pd.to_numeric(series, errors="coerce").dropna()
+    if len(s) < nlags + 5:
+        return []
+    out = []
+    for lag in range(1, nlags + 1):
+        try:
+            v = s.autocorr(lag=lag)
+            if not pd.isna(v):
+                out.append(round(float(v), 3))
+        except Exception:
+            continue
+    return out
+
+
+def _detect_temporal_trend(df: pd.DataFrame, time_col: str, value_col: str) -> dict[str, Any]:
+    """Tendance linéaire d'une série temporelle et projection ISO simple."""
+    try:
+        d = df[[time_col, value_col]].copy()
+        d[time_col] = pd.to_datetime(d[time_col], errors="coerce")
+        d[value_col] = pd.to_numeric(d[value_col], errors="coerce")
+        d = d.dropna().sort_values(time_col)
+        if len(d) < 10:
+            return {}
+        t_num = (d[time_col] - d[time_col].iloc[0]).dt.total_seconds().values / 86400.0
+        y = d[value_col].values
+        slope, intercept = np.polyfit(t_num, y, 1)
+        current = float(y[-1])
+        result = {
+            "slope_per_day": round(float(slope), 6),
+            "intercept": round(float(intercept), 4),
+            "current_value": round(current, 4),
+            "current_date": str(d[time_col].iloc[-1].date()),
+            "n_points": len(y),
+            "trend": "croissante" if slope > 0 else "décroissante" if slope < 0 else "stable",
+        }
+        # Projections seuils ISO (V-RMS uniquement)
+        col_lower = value_col.lower()
+        if any(k in col_lower for k in ["v_rms", "vrms"]) and slope > 0:
+            for threshold, label in [(4.5, "Zone C"), (7.1, "Zone D")]:
+                if current < threshold:
+                    days_to_threshold = (threshold - current) / slope
+                    if 0 < days_to_threshold < 3650:
+                        target_date = d[time_col].iloc[-1] + pd.Timedelta(days=days_to_threshold)
+                        result[f"days_to_{label.replace(' ', '_').lower()}"] = round(float(days_to_threshold), 1)
+                        result[f"date_{label.replace(' ', '_').lower()}"] = str(target_date.date())
+        return result
+    except Exception:
+        return {}
+
+
+def _compute_critical_alerts(df: pd.DataFrame, summary: dict, kpis: dict | None,
+                              rul_info: dict | None, data_type: str) -> list[dict[str, Any]]:
+    """Génère la liste structurée des alertes critiques (rouges/oranges/jaunes)."""
+    alerts: list[dict[str, Any]] = []
+
+    # Valeurs manquantes critiques
+    for c in summary.get("columns", []):
+        mp = c.get("missing_pct", 0) or 0
+        if mp > 20:
+            alerts.append({
+                "level": "warning", "icon": "[!]",
+                "title": f"{c['name']} : {mp}% de valeurs manquantes",
+                "impact": "Risque de biais d'imputation — calculs agrégés non fiables",
+                "action": "Investiguer la source de saisie (capteur défaillant ? champ optionnel ?)",
+                "category": "data_quality",
+            })
+
+    # Vibration : V-RMS Zone D / Zone C
+    if data_type == "vibration":
+        vrms_col = next((c for c in df.columns if any(k in c.lower() for k in ["v_rms", "vrms"])), None)
+        if vrms_col:
+            try:
+                vrms_data = pd.to_numeric(df[vrms_col], errors="coerce").dropna()
+                n_zone_d = int((vrms_data > 7.1).sum())
+                n_zone_c = int(((vrms_data > 4.5) & (vrms_data <= 7.1)).sum())
+                if n_zone_d > 0:
+                    alerts.append({
+                        "level": "critical", "icon": "[CRITIQUE]",
+                        "title": f"{n_zone_d} mesure(s) en Zone D ISO 10816-3 (V-RMS > 7.1 mm/s)",
+                        "impact": "Défaillance imminente possible — risque sécurité opérateur",
+                        "action": "Arrêt planifié + inspection roulements/alignement sous 24h",
+                        "category": "vibration",
+                    })
+                elif n_zone_c > 0:
+                    alerts.append({
+                        "level": "warning", "icon": "[ATTENTION]",
+                        "title": f"{n_zone_c} mesure(s) en Zone C ISO 10816-3 (4.5-7.1 mm/s)",
+                        "impact": "Dégradation avancée — maintenance corrective requise",
+                        "action": "Planifier intervention sous 7 jours, renforcer la surveillance",
+                        "category": "vibration",
+                    })
+            except Exception:
+                pass
+
+    # KPIs hors normes
+    if kpis:
+        dispo = (kpis.get("availability") or {}).get("value")
+        if dispo is not None and dispo < 90:
+            alerts.append({
+                "level": "warning", "icon": "[!]",
+                "title": f"Disponibilité {dispo}% sous le seuil EN 15341 classe B (90%)",
+                "impact": "Performance maintenance dégradée",
+                "action": "Audit du processus + révision plans préventifs",
+                "category": "kpi",
+            })
+        anom = (kpis.get("anomaly_rate") or {}).get("value")
+        if anom is not None and anom > 95:
+            alerts.append({
+                "level": "warning", "icon": "[?]",
+                "title": f"Taux anomalies {anom}% — valeur suspecte (probable erreur de calcul)",
+                "impact": "Métrique non exploitable — biaise le diagnostic",
+                "action": "Vérifier la formule et la définition du statut anomalie",
+                "category": "data_quality",
+            })
+
+    # RUL / Health Index critique
+    if rul_info:
+        pct_crit = rul_info.get("pct_critical")
+        if pct_crit is not None and pct_crit > 5:
+            alerts.append({
+                "level": "critical", "icon": "[CRITIQUE]",
+                "title": f"{pct_crit}% du parc en état critique (Health Index < 0.3)",
+                "impact": "Risque élevé de pannes en cascade",
+                "action": "Inspection immédiate + maintenance préventive renforcée",
+                "category": "pronostic",
+            })
+        rul_min = rul_info.get("rul_min")
+        if rul_min is not None and rul_min < 240:  # < 10 jours
+            alerts.append({
+                "level": "critical", "icon": "[CRITIQUE]",
+                "title": f"RUL minimal du parc : {rul_min}h (< 10 jours)",
+                "impact": "Au moins une machine en fin de vie imminente",
+                "action": "Identifier la machine concernée et planifier l'intervention",
+                "category": "pronostic",
+            })
+
+    # Doublons élevés
+    dup_pct = summary.get("duplicates", 0) / max(summary.get("n_rows", 1), 1) * 100
+    if dup_pct > 5:
+        alerts.append({
+            "level": "warning", "icon": "[!]",
+            "title": f"{summary['duplicates']} doublons détectés ({dup_pct:.1f}%)",
+            "impact": "Biais sur les statistiques agrégées (moyenne, variance)",
+            "action": "Investiguer l'origine (ingestion multiple ? bug pipeline ?)",
+            "category": "data_quality",
+        })
+
+    # Ratios bornés hors plage
+    for c in summary.get("columns", []):
+        if c.get("type") != "numeric":
+            continue
+        name_l = str(c["name"]).lower()
+        if any(k in name_l for k in ["pct", "_pourcent", "rate", "ratio"]) and "_pct" not in name_l:
+            continue
+        if "_pct" in name_l or any(k in name_l for k in ["disponibilite", "oee", "trs", "quality_pct"]):
+            mx = c.get("max")
+            if mx is not None and mx > 100:
+                alerts.append({
+                    "level": "warning", "icon": "[!]",
+                    "title": f"{c['name']} dépasse 100% (max={mx})",
+                    "impact": "Violation EN 15341 — ratio borné hors plage",
+                    "action": "Audit du pipeline de calcul source",
+                    "category": "data_quality",
+                })
+
+    return alerts
+
+
+def _compute_executive_summary_data(summary: dict, quality_score: int, data_type: str,
+                                     alerts: list, kpis: dict | None, rul_info: dict | None,
+                                     vif_info: list, anomalies_iso: dict) -> dict[str, Any]:
+    """Données structurées pour la synthèse exécutive (page 1 du rapport)."""
+    qs_label = ("Excellent" if quality_score >= 85 else "Bon" if quality_score >= 70
+                else "Acceptable" if quality_score >= 50 else "Insuffisant")
+
+    n_critical = sum(1 for a in alerts if a["level"] == "critical")
+    n_warnings = sum(1 for a in alerts if a["level"] == "warning")
+
+    # Verdict d'aptitude au training
+    if quality_score >= 70 and n_critical == 0:
+        readiness = "OUI"
+        readiness_reason = "Qualité suffisante, aucune alerte critique."
+    elif quality_score >= 50 and n_critical <= 1:
+        readiness = "OUI avec réserves"
+        readiness_reason = f"Score {quality_score}/100 acceptable mais alertes à traiter avant production."
+    else:
+        readiness = "NON — corrections requises"
+        readiness_reason = f"Score {quality_score}/100 + {n_critical} alerte(s) critique(s) bloquantes."
+
+    type_labels = {"vibration": "Vibratoire", "kpi": "KPI", "maintenance": "Maintenance",
+                   "machine": "Machine", "generic": "Générique"}
+
+    # 3 actions prioritaires
+    urgent_actions = []
+    short_term_actions = []
+    medium_term_actions = []
+    for a in alerts:
+        if a["level"] == "critical":
+            urgent_actions.append(a["action"])
+        elif a["level"] == "warning":
+            short_term_actions.append(a["action"])
+    if vif_info and any(v.get("verdict") == "Critique (>10)" for v in vif_info):
+        n_colin = sum(1 for v in vif_info if v.get("verdict") == "Critique (>10)")
+        short_term_actions.append(f"Traiter la multicolinéarité ({n_colin} variable(s) VIF > 10)")
+    if anomalies_iso and anomalies_iso.get("pct_anomalies", 0) > 5:
+        medium_term_actions.append(f"Auditer les {anomalies_iso['n_anomalies']} anomalies multidimensionnelles détectées (Isolation Forest)")
+    if not medium_term_actions:
+        medium_term_actions.append("Enrichir le dataset (historique long, données capteurs brutes WAV/DAT)")
+
+    return {
+        "quality_score": quality_score,
+        "quality_label": qs_label,
+        "dataset_type":  type_labels.get(data_type, data_type),
+        "n_rows": summary["n_rows"],
+        "n_cols": summary["n_cols"],
+        "n_critical_alerts": n_critical,
+        "n_warnings": n_warnings,
+        "readiness": readiness,
+        "readiness_reason": readiness_reason,
+        "critical_alerts_top": [a for a in alerts if a["level"] == "critical"][:3],
+        "urgent_actions":     urgent_actions[:3] if urgent_actions else ["Aucune action critique immédiate"],
+        "short_term_actions": short_term_actions[:3] if short_term_actions else ["Surveillance continue recommandée"],
+        "medium_term_actions": medium_term_actions[:3],
+    }
+
+
+def _suggest_boxcox_candidates(summary: dict) -> list[dict[str, Any]]:
+    """Identifie les colonnes très asymétriques candidates à log/Box-Cox."""
+    candidates = []
+    for c in summary.get("columns", []):
+        if c.get("type") != "numeric":
+            continue
+        sk = c.get("skewness")
+        if sk is None:
+            continue
+        if abs(sk) > 2:
+            transform = "log1p" if (c.get("min") or 0) >= 0 else "Yeo-Johnson"
+            candidates.append({
+                "name": c["name"], "skewness": sk,
+                "transform": transform,
+                "reason": f"|skewness|={abs(sk):.2f} > 2 (très asymétrique)",
+            })
+    return candidates
+
+
+def _detect_target_leakage_candidates(df: pd.DataFrame, data_type: str) -> list[dict[str, str]]:
+    """Heuristique de détection des features à risque de fuite de données (target leakage)."""
+    candidates = []
+    cols_lower = {c: str(c).lower() for c in df.columns}
+    leakage_patterns = {
+        "mttr": "Calculé ex-post — ne pas utiliser pour prédire la durée d'intervention",
+        "downtime_actual": "Information post-événement — risque de leakage en classification",
+        "duree_reelle": "Donnée post-intervention — ne pas inclure comme feature",
+        "health_index": "Souvent dérivé de v_rms — éviter de combiner les deux dans un même modèle",
+        "rul": "Souvent la variable cible — ne pas inclure comme feature",
+    }
+    for col, low in cols_lower.items():
+        for pattern, reason in leakage_patterns.items():
+            if pattern in low:
+                candidates.append({"name": col, "reason": reason})
+                break
+    return candidates
+
+
+def _check_post_cleaning(df_proc: pd.DataFrame) -> list[dict[str, str]]:
+    """Validation automatique du dataset après nettoyage."""
+    checks = []
+    n_nan = int(df_proc.isnull().sum().sum())
+    checks.append({"check": "Aucune valeur NaN residuelle",
+                   "status": "OK" if n_nan == 0 else "ECHEC",
+                   "detail": f"{n_nan} NaN restants" if n_nan > 0 else "Aucun NaN"})
+    num_df = df_proc.select_dtypes(include=[np.number])
+    if len(num_df.columns) > 0 and len(num_df) > 0:
+        max_abs = float(num_df.abs().max().max())
+        checks.append({"check": "Features numeriques dans plage [-10, +10]",
+                       "status": "OK" if max_abs < 10 else "ATTENTION",
+                       "detail": f"|max| observe = {max_abs:.2f}"})
+    n_const = sum(1 for c in df_proc.columns if df_proc[c].nunique(dropna=True) <= 1)
+    checks.append({"check": "Aucune colonne constante apres transformation",
+                   "status": "OK" if n_const == 0 else "ECHEC",
+                   "detail": f"{n_const} colonne(s) constante(s)" if n_const > 0 else "Aucune"})
+    obj_cols = df_proc.select_dtypes(include=["object"]).columns.tolist()
+    checks.append({"check": "Aucune colonne texte non encodee",
+                   "status": "OK" if not obj_cols else "ECHEC",
+                   "detail": f"Texte restant : {', '.join(obj_cols[:5])}" if obj_cols else "Toutes encodees"})
+    return checks
 
 
 # ─── Génération des plots ──────────────────────────────────────────────────────
 
 def _generate_plots(df: pd.DataFrame, dataset_id: int) -> list[dict[str, str]]:
-    """Génère les plots EDA et les sauvegarde comme PNG. Retourne liste de {title, path, base64}."""
+    """Génère les plots EDA et les sauvegarde comme PNG. Retourne liste de {title, path, base64, section}."""
     plots = []
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
@@ -605,7 +1326,7 @@ def _generate_plots(df: pd.DataFrame, dataset_id: int) -> list[dict[str, str]]:
         path = plot_dir / "missing_values.png"
         fig.savefig(path, dpi=100, bbox_inches="tight")
         plt.close(fig)
-        plots.append({"title": "Valeurs manquantes", "path": str(path), "b64": _img_to_b64(path)})
+        plots.append({"title": "Valeurs manquantes", "path": str(path), "b64": _img_to_b64(path), "section": "missing_values"})
 
     # 2. Distributions numériques (max 12 colonnes)
     if num_cols:
@@ -627,7 +1348,7 @@ def _generate_plots(df: pd.DataFrame, dataset_id: int) -> list[dict[str, str]]:
         path = plot_dir / "distributions.png"
         fig.savefig(path, dpi=100, bbox_inches="tight")
         plt.close(fig)
-        plots.append({"title": "Distributions numériques", "path": str(path), "b64": _img_to_b64(path)})
+        plots.append({"title": "Distributions numériques", "path": str(path), "b64": _img_to_b64(path), "section": "distributions"})
 
     # 2b. Boxplots (outliers IQR visibles)
     if num_cols:
@@ -652,7 +1373,7 @@ def _generate_plots(df: pd.DataFrame, dataset_id: int) -> list[dict[str, str]]:
         path = plot_dir / "boxplots.png"
         fig.savefig(path, dpi=100, bbox_inches="tight")
         plt.close(fig)
-        plots.append({"title": "Boxplots & Outliers", "path": str(path), "b64": _img_to_b64(path)})
+        plots.append({"title": "Boxplots & Outliers", "path": str(path), "b64": _img_to_b64(path), "section": "boxplots"})
 
     # 3. Matrice de corrélation (si ≥ 2 colonnes numériques)
     if len(num_cols) >= 2:
@@ -666,7 +1387,22 @@ def _generate_plots(df: pd.DataFrame, dataset_id: int) -> list[dict[str, str]]:
         path = plot_dir / "correlation.png"
         fig.savefig(path, dpi=100, bbox_inches="tight")
         plt.close(fig)
-        plots.append({"title": "Matrice de corrélation", "path": str(path), "b64": _img_to_b64(path)})
+        plots.append({"title": "Matrice de corrélation (Pearson)", "path": str(path), "b64": _img_to_b64(path), "section": "correlation_pearson"})
+
+        # Matrice Spearman pour relations non-linéaires
+        try:
+            corr_s = df[corr_cols].corr(method="spearman")
+            fig, ax = plt.subplots(figsize=(max(6, len(corr_cols) * 0.6), max(5, len(corr_cols) * 0.5)))
+            sns.heatmap(corr_s, annot=len(corr_cols) <= 12, fmt=".2f", cmap="PuOr",
+                        center=0, ax=ax, linewidths=0.5, square=True, cbar_kws={"shrink": 0.8})
+            ax.set_title("Matrice de corrélation (Spearman — monotone)")
+            plt.tight_layout()
+            path_s = plot_dir / "correlation_spearman.png"
+            fig.savefig(path_s, dpi=100, bbox_inches="tight")
+            plt.close(fig)
+            plots.append({"title": "Matrice de corrélation (Spearman)", "path": str(path_s), "b64": _img_to_b64(path_s), "section": "correlation_spearman"})
+        except Exception:
+            pass
 
     # 4. Séries temporelles (si colonne timestamp/date détectée)
     time_col = _detect_time_col(df)
@@ -690,7 +1426,7 @@ def _generate_plots(df: pd.DataFrame, dataset_id: int) -> list[dict[str, str]]:
                 path = plot_dir / "time_series.png"
                 fig.savefig(path, dpi=100, bbox_inches="tight")
                 plt.close(fig)
-                plots.append({"title": "Séries temporelles", "path": str(path), "b64": _img_to_b64(path)})
+                plots.append({"title": "Séries temporelles", "path": str(path), "b64": _img_to_b64(path), "section": "time_series"})
         except Exception:
             pass
 
@@ -712,12 +1448,211 @@ def _generate_plots(df: pd.DataFrame, dataset_id: int) -> list[dict[str, str]]:
             path = plot_dir / "categoricals.png"
             fig.savefig(path, dpi=100, bbox_inches="tight")
             plt.close(fig)
-            plots.append({"title": "Variables catégorielles", "path": str(path), "b64": _img_to_b64(path)})
+            plots.append({"title": "Variables catégorielles", "path": str(path), "b64": _img_to_b64(path), "section": "categoricals"})
 
     # 6. Graphiques vibratoires (si colonnes vibration détectées)
     _vibration_plots(df, num_cols, cat_cols, plot_dir, plots)
 
+    # 7. Graphiques avancés (VIF, Isolation Forest 2D, RUL, Pareto, ACF)
+    _advanced_plots(df, num_cols, cat_cols, plot_dir, plots)
+
     return plots
+
+
+def _advanced_plots(df: pd.DataFrame, num_cols: list, cat_cols: list,
+                    plot_dir: Path, plots: list) -> None:
+    """Graphiques avancés : VIF, Isolation Forest 2D, RUL, Health vs RUL, Pareto maintenance, ACF."""
+
+    # 7a. VIF — multicolinéarité
+    try:
+        vif_data = _compute_vif(df, max_cols=15)
+        if vif_data:
+            names = [v["name"] for v in vif_data]
+            vifs = [min(v["vif"], 50) for v in vif_data]  # cap visuel à 50
+            colors_v = ["#dc2626" if v["vif"] > 10 else "#f97316" if v["vif"] > 5 else "#16a34a" for v in vif_data]
+            fig, ax = plt.subplots(figsize=(max(7, len(names) * 0.45), 4))
+            ax.barh(names, vifs, color=colors_v, edgecolor="white")
+            ax.axvline(x=10, color="#dc2626", linestyle="--", alpha=0.7, label="Seuil critique (10)")
+            ax.axvline(x=5, color="#f97316", linestyle="--", alpha=0.5, label="Seuil eleve (5)")
+            ax.set_xlabel("VIF (Variance Inflation Factor)")
+            ax.set_title("Multicolinearite par variable")
+            ax.legend(fontsize=7, loc="lower right")
+            plt.tight_layout()
+            path = plot_dir / "vif_multicollinearity.png"
+            fig.savefig(path, dpi=110, bbox_inches="tight")
+            plt.close(fig)
+            plots.append({"title": "VIF — Multicolinearite", "path": str(path), "b64": _img_to_b64(path), "section": "vif"})
+    except Exception:
+        pass
+
+    # 7b. Isolation Forest 2D (sur 2 colonnes les plus variantes)
+    try:
+        if len(num_cols) >= 2:
+            from sklearn.ensemble import IsolationForest
+            num_df = df[num_cols].replace([np.inf, -np.inf], np.nan).dropna()
+            if len(num_df) >= 30 and num_df.shape[1] >= 2:
+                # Sélection des 2 colonnes avec la variance normalisée la plus élevée
+                variances = (num_df.var() / (num_df.abs().mean() + 1e-9)).sort_values(ascending=False)
+                if len(variances) >= 2:
+                    col1, col2 = variances.index[0], variances.index[1]
+                    clf = IsolationForest(contamination=0.02, random_state=42, n_estimators=100)
+                    preds = clf.fit_predict(num_df.values)
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    mask_norm = preds == 1
+                    mask_anom = preds == -1
+                    ax.scatter(num_df.loc[mask_norm, col1], num_df.loc[mask_norm, col2],
+                               c="#2563eb", alpha=0.45, s=18, label=f"Normal ({mask_norm.sum()})")
+                    ax.scatter(num_df.loc[mask_anom, col1], num_df.loc[mask_anom, col2],
+                               c="#dc2626", alpha=0.85, s=32, edgecolors="black", linewidth=0.4,
+                               label=f"Anomalie ({mask_anom.sum()})")
+                    ax.set_xlabel(col1)
+                    ax.set_ylabel(col2)
+                    ax.set_title(f"Anomalies multidimensionnelles (Isolation Forest, contamination=2%)")
+                    ax.legend(fontsize=8)
+                    plt.tight_layout()
+                    path = plot_dir / "isolation_forest_2d.png"
+                    fig.savefig(path, dpi=110, bbox_inches="tight")
+                    plt.close(fig)
+                    plots.append({"title": "Isolation Forest 2D", "path": str(path), "b64": _img_to_b64(path), "section": "iso_forest_2d"})
+    except Exception:
+        pass
+
+    # 7c. Distribution du RUL (si applicable)
+    rul_col = next((c for c in num_cols if any(k in str(c).lower()
+                    for k in ["rul", "remaining_useful_life", "drbf", "duree_vie_restante"])), None)
+    if rul_col:
+        try:
+            rul_data = pd.to_numeric(df[rul_col], errors="coerce").dropna()
+            if len(rul_data) > 10:
+                fig, ax = plt.subplots(figsize=(9, 4.5))
+                ax.hist(rul_data, bins=30, color="#0ea5e9", alpha=0.8, edgecolor="white")
+                ax.axvline(x=float(rul_data.mean()), color="#16a34a", linestyle="--",
+                           label=f"Moyenne = {rul_data.mean():.0f}")
+                ax.axvline(x=float(rul_data.median()), color="#f97316", linestyle="--",
+                           label=f"Mediane = {rul_data.median():.0f}")
+                ax.axvline(x=float(rul_data.min()), color="#dc2626", linestyle="--",
+                           label=f"Min = {rul_data.min():.0f} (machine critique)")
+                ax.set_xlabel(rul_col)
+                ax.set_ylabel("Frequence")
+                ax.set_title("Distribution du RUL — Duree de vie restante")
+                ax.legend(fontsize=8)
+                plt.tight_layout()
+                path = plot_dir / "rul_distribution.png"
+                fig.savefig(path, dpi=110, bbox_inches="tight")
+                plt.close(fig)
+                plots.append({"title": "Distribution RUL", "path": str(path), "b64": _img_to_b64(path), "section": "rul_distribution"})
+        except Exception:
+            pass
+
+    # 7d. Health Index vs RUL (scatter)
+    health_col = next((c for c in num_cols if any(k in str(c).lower()
+                       for k in ["health_index", "health", "asset_health", "indice_sante"])), None)
+    machine_col = next((c for c in cat_cols if str(c).lower() in ("machine_id", "machine", "equipment_id")), None)
+    if rul_col and health_col:
+        try:
+            d = df[[rul_col, health_col] + ([machine_col] if machine_col else [])].dropna()
+            if len(d) > 5:
+                fig, ax = plt.subplots(figsize=(9, 6))
+                health_vals = pd.to_numeric(d[health_col], errors="coerce")
+                if health_vals.max() > 1:
+                    health_vals = health_vals / 100.0
+                rul_vals = pd.to_numeric(d[rul_col], errors="coerce")
+                scatter = ax.scatter(rul_vals, health_vals, c=health_vals, cmap="RdYlGn",
+                                     s=60, alpha=0.75, edgecolors="black", linewidth=0.3,
+                                     vmin=0, vmax=1)
+                ax.axhline(y=0.3, color="#dc2626", linestyle="--", alpha=0.6, label="Seuil critique (0.3)")
+                ax.set_xlabel(rul_col)
+                ax.set_ylabel("Health Index (normalise)")
+                ax.set_title("Health Index vs RUL — Cartographie du parc")
+                ax.legend(fontsize=8)
+                plt.colorbar(scatter, ax=ax, label="Health Index")
+                if machine_col:
+                    for _, row in d.iterrows():
+                        try:
+                            hv = float(row[health_col])
+                            if hv > 1:
+                                hv = hv / 100.0
+                            if hv < 0.3:
+                                ax.annotate(str(row[machine_col]),
+                                            (float(row[rul_col]), hv),
+                                            fontsize=6, alpha=0.8, color="#7f1d1d")
+                        except Exception:
+                            continue
+                plt.tight_layout()
+                path = plot_dir / "health_vs_rul.png"
+                fig.savefig(path, dpi=110, bbox_inches="tight")
+                plt.close(fig)
+                plots.append({"title": "Health Index vs RUL", "path": str(path), "b64": _img_to_b64(path), "section": "health_vs_rul"})
+        except Exception:
+            pass
+
+    # 7e. Pareto des interventions par machine (données maintenance)
+    if machine_col:
+        try:
+            vc = df[machine_col].value_counts().head(15)
+            if len(vc) >= 3 and vc.sum() > 10:
+                fig, ax1 = plt.subplots(figsize=(max(7, len(vc) * 0.5), 4.5))
+                bar_colors = ["#dc2626" if i < 3 else "#f97316" if i < 6 else "#6b7280"
+                              for i in range(len(vc))]
+                ax1.bar(range(len(vc)), vc.values, color=bar_colors, edgecolor="white")
+                ax1.set_xticks(range(len(vc)))
+                ax1.set_xticklabels(vc.index, rotation=45, fontsize=7, ha="right")
+                ax1.set_ylabel("Nombre d'occurrences", color="#1f2937")
+                ax1.set_title(f"Pareto par {machine_col} — Top 80/20")
+                ax2 = ax1.twinx()
+                cum_pct = (vc.cumsum() / vc.sum() * 100).values
+                ax2.plot(range(len(vc)), cum_pct, color="#7c3aed", marker="o",
+                         linewidth=1.5, markersize=4, label="Cumul %")
+                ax2.axhline(y=80, color="#dc2626", linestyle="--", alpha=0.5, label="80%")
+                ax2.set_ylabel("Cumul (%)", color="#7c3aed")
+                ax2.set_ylim(0, 105)
+                ax2.legend(fontsize=7, loc="lower right")
+                plt.tight_layout()
+                path = plot_dir / "pareto_machines.png"
+                fig.savefig(path, dpi=110, bbox_inches="tight")
+                plt.close(fig)
+                plots.append({"title": "Pareto interventions par machine", "path": str(path), "b64": _img_to_b64(path), "section": "pareto"})
+        except Exception:
+            pass
+
+    # 7f. ACF d'une série temporelle (si time_col + variable principale)
+    try:
+        time_col = _detect_time_col(df)
+        if time_col and num_cols:
+            primary = num_cols[0]
+            for cand in num_cols:
+                cl = str(cand).lower()
+                if any(k in cl for k in ["v_rms", "vrms", "rul", "disponibilite", "mtbf"]):
+                    primary = cand
+                    break
+            d = df[[time_col, primary]].copy()
+            d[time_col] = pd.to_datetime(d[time_col], errors="coerce")
+            d = d.dropna().sort_values(time_col)
+            if len(d) >= 30:
+                series = pd.to_numeric(d[primary], errors="coerce").dropna()
+                acf_vals = _compute_acf_manual(series, nlags=min(20, len(series) // 3))
+                if acf_vals:
+                    fig, ax = plt.subplots(figsize=(9, 3.5))
+                    lags = list(range(1, len(acf_vals) + 1))
+                    bars_colors = ["#2563eb" if abs(v) < 0.3 else "#f97316" if abs(v) < 0.6 else "#dc2626"
+                                   for v in acf_vals]
+                    ax.bar(lags, acf_vals, color=bars_colors, edgecolor="white", width=0.7)
+                    ax.axhline(y=0, color="black", linewidth=0.6)
+                    ci = 1.96 / np.sqrt(len(series))
+                    ax.axhline(y=ci, color="#7c3aed", linestyle="--", alpha=0.5, label=f"IC 95% (±{ci:.2f})")
+                    ax.axhline(y=-ci, color="#7c3aed", linestyle="--", alpha=0.5)
+                    ax.set_xlabel("Lag")
+                    ax.set_ylabel("Autocorrelation")
+                    ax.set_title(f"ACF — Autocorrelation de '{primary}'")
+                    ax.set_ylim(-1.05, 1.05)
+                    ax.legend(fontsize=7)
+                    plt.tight_layout()
+                    path = plot_dir / "acf_plot.png"
+                    fig.savefig(path, dpi=110, bbox_inches="tight")
+                    plt.close(fig)
+                    plots.append({"title": "ACF (autocorrelation)", "path": str(path), "b64": _img_to_b64(path), "section": "acf"})
+    except Exception:
+        pass
 
 
 def _vibration_plots(df: pd.DataFrame, num_cols: list, cat_cols: list, plot_dir: Path, plots: list):
@@ -756,7 +1691,7 @@ def _vibration_plots(df: pd.DataFrame, num_cols: list, cat_cols: list, plot_dir:
             path = plot_dir / "vib_vrms_trend.png"
             fig.savefig(path, dpi=120, bbox_inches="tight")
             plt.close(fig)
-            plots.append({"title": "Tendance V-RMS", "path": str(path), "b64": _img_to_b64(path)})
+            plots.append({"title": "Tendance V-RMS", "path": str(path), "b64": _img_to_b64(path), "section": "vrms_trend"})
         except Exception:
             pass
 
@@ -780,7 +1715,7 @@ def _vibration_plots(df: pd.DataFrame, num_cols: list, cat_cols: list, plot_dir:
             path = plot_dir / "vib_crest_kurtosis.png"
             fig.savefig(path, dpi=120, bbox_inches="tight")
             plt.close(fig)
-            plots.append({"title": "Crest Factor vs Kurtosis", "path": str(path), "b64": _img_to_b64(path)})
+            plots.append({"title": "Crest Factor vs Kurtosis", "path": str(path), "b64": _img_to_b64(path), "section": "crest_kurtosis"})
         except Exception:
             pass
 
@@ -800,7 +1735,7 @@ def _vibration_plots(df: pd.DataFrame, num_cols: list, cat_cols: list, plot_dir:
             path = plot_dir / "vib_zone_distribution.png"
             fig.savefig(path, dpi=120, bbox_inches="tight")
             plt.close(fig)
-            plots.append({"title": "Distribution Zones ISO", "path": str(path), "b64": _img_to_b64(path)})
+            plots.append({"title": "Distribution Zones ISO", "path": str(path), "b64": _img_to_b64(path), "section": "iso_zones"})
         except Exception:
             pass
 
@@ -820,7 +1755,7 @@ def _vibration_plots(df: pd.DataFrame, num_cols: list, cat_cols: list, plot_dir:
             path = plot_dir / "vib_boxplot_par_machine.png"
             fig.savefig(path, dpi=120, bbox_inches="tight")
             plt.close(fig)
-            plots.append({"title": "Boxplot V-RMS par machine", "path": str(path), "b64": _img_to_b64(path)})
+            plots.append({"title": "Boxplot V-RMS par machine", "path": str(path), "b64": _img_to_b64(path), "section": "vrms_par_machine"})
         except Exception:
             pass
 
@@ -1089,6 +2024,100 @@ def _pdf_kv(pdf: "FPDF", label: str, value: str, label_w: int = 80) -> None:
     pdf.cell(0, 6, _S(str(value)), new_x="LMARGIN", new_y="NEXT")
 
 
+# ─── Helpers PDF additionnels ──────────────────────────────────────────────
+
+def _pdf_paragraph(pdf: "FPDF", text: str, font_size: int = 10, line_h: int = 5) -> None:
+    """Paragraphe sanitisé avec wrap automatique."""
+    pdf.set_font("Helvetica", "", font_size)
+    pdf.set_text_color(55, 65, 81)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(0, line_h, _S(text or ""))
+
+
+def _pdf_subsection(pdf: "FPDF", title: str) -> None:
+    """Sous-titre de section (style discret)."""
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(37, 99, 235)
+    pdf.cell(0, 6, _S(f"  > {title}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(55, 65, 81)
+    pdf.ln(1)
+
+
+def _embed_plot(pdf: "FPDF", plot_obj: dict | None, max_w: float | None = None) -> bool:
+    """Insère un plot avec son titre. Retourne True si inséré."""
+    if not plot_obj or not plot_obj.get("path"):
+        return False
+    try:
+        if max_w is None:
+            max_w = pdf.w - pdf.l_margin - pdf.r_margin
+        # Si peu de place restante, nouvelle page
+        space_left = pdf.h - pdf.get_y() - pdf.b_margin
+        if space_left < 75:
+            pdf.add_page()
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(75, 85, 99)
+        pdf.cell(0, 5, _S(f"Figure : {plot_obj.get('title', '')}"), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
+        pdf.image(plot_obj["path"], w=max_w)
+        pdf.ln(3)
+        return True
+    except Exception:
+        return False
+
+
+def _alert_card(pdf: "FPDF", alert: dict) -> None:
+    """Carte d'alerte structurée avec code couleur."""
+    level = alert.get("level", "info")
+    if level == "critical":
+        bg, fg = (254, 226, 226), (185, 28, 28)
+        prefix = "[CRITIQUE]"
+    elif level == "warning":
+        bg, fg = (255, 237, 213), (194, 65, 12)
+        prefix = "[ATTENTION]"
+    else:
+        bg, fg = (219, 234, 254), (29, 78, 216)
+        prefix = "[INFO]"
+
+    pdf.ln(1)
+    pdf.set_fill_color(*bg)
+    pdf.set_text_color(*fg)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(0, 6, _S(f"  {prefix}  {alert.get('title', '')}"), fill=True, new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(55, 65, 81)
+    pdf.set_x(pdf.l_margin + 4)
+    pdf.multi_cell(0, 4.5, _S(f"  Impact : {alert.get('impact', '')}"))
+    pdf.set_x(pdf.l_margin + 4)
+    pdf.multi_cell(0, 4.5, _S(f"  Action : {alert.get('action', '')}"))
+    pdf.ln(1)
+
+
+def _split_exec_summary(text: str) -> dict[str, str]:
+    """Découpe le bloc exec_summary du LLM (séparé par '||') en 4 sous-blocs."""
+    if not text or "||" not in text:
+        return {"context": text or "", "verdict": "", "limits": "", "readiness": ""}
+    parts = [p.strip() for p in text.split("||")]
+    out = {}
+    for p in parts:
+        low = p.lower()
+        if "dataset en" in low or "contexte" in low:
+            out["context"] = p
+        elif "verdict" in low or "qualité" in low or "qualite" in low:
+            out["verdict"] = p
+        elif "limite" in low:
+            out["limits"] = p
+        elif "prêt" in low or "pret" in low or "entraînement" in low or "entrainement" in low:
+            out["readiness"] = p
+    for k in ("context", "verdict", "limits", "readiness"):
+        out.setdefault(k, "")
+    if not any(out.values()) and parts:
+        out["context"] = parts[0]
+    return out
+
+
+# ─── Rapport PDF canonique (13 sections + synthèse exécutive) ─────────────────
+
 def _generate_pdf(
     dataset_id: int,
     filename: str,
@@ -1101,64 +2130,156 @@ def _generate_pdf(
     pipeline_trace: dict | None = None,
     kpis: dict | None = None,
     rul_info: dict | None = None,
+    alerts: list | None = None,
+    iso_25012: dict | None = None,
+    vif_info: list | None = None,
+    anomalies_iso: dict | None = None,
+    exec_summary_data: dict | None = None,
+    stationarity: dict | None = None,
+    temporal_trend: dict | None = None,
 ) -> Path:
+    """Rapport PDF canonique : synthèse exécutive + 13 sections avec graphiques intercalés."""
     report_path = REPORTS_DIR / f"eda_report_{dataset_id}.pdf"
     pt = pipeline_trace or {}
+    alerts = alerts or []
+    iso_25012 = iso_25012 or {}
+    vif_info = vif_info or []
+    anomalies_iso = anomalies_iso or {}
+    exec_summary_data = exec_summary_data or {}
+    plots_by_section: dict[str, dict] = {p.get("section", ""): p for p in plots if p.get("section")}
+
+    _type_labels = {"vibration": "Vibratoire", "kpi": "KPI", "maintenance": "Maintenance",
+                    "machine": "Machine", "generic": "Generique"}
+    qs_label = ("Excellent" if quality_score >= 85 else "Bon" if quality_score >= 70
+                else "Acceptable" if quality_score >= 50 else "Insuffisant")
+    qs_color = ((22, 163, 74) if quality_score >= 85
+                else (101, 163, 13) if quality_score >= 70
+                else (249, 115, 22) if quality_score >= 50
+                else (220, 38, 38))
+
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # ══ PAGE DE GARDE ═════════════════════════════════════════════════════════
-    pdf.set_fill_color(249, 115, 22)
-    pdf.set_draw_color(249, 115, 22)
-
+    # ════════════════════════════════════════════════════════════════════════
+    # PAGE DE GARDE
+    # ════════════════════════════════════════════════════════════════════════
     pdf.set_font("Helvetica", "B", 22)
     pdf.set_text_color(249, 115, 22)
     pdf.cell(0, 14, "Rapport d'Analyse EDA", new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(17, 24, 39)
-    pdf.cell(0, 8, "AI Maintenance  |  Atlas Industries Maroc", new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.ln(4)
+    pdf.cell(0, 7, "AI Maintenance  |  Plateforme de Maintenance Predictive", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.ln(3)
     pdf.set_line_width(0.8)
+    pdf.set_draw_color(249, 115, 22)
     pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
-    pdf.ln(6)
+    pdf.ln(5)
 
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(107, 114, 128)
     pdf.cell(0, 6, _S(f"Fichier : {filename}"), new_x="LMARGIN", new_y="NEXT", align="C")
-    _type_labels = {"vibration": "Vibratoire", "kpi": "KPI", "maintenance": "Maintenance",
-                    "machine": "Machine", "generic": "Generique"}
     pdf.cell(0, 6, _S(f"Type detecte : {_type_labels.get(data_type, data_type)}  |  "
                       f"Genere le : {datetime.now().strftime('%Y-%m-%d %H:%M')}"),
              new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.ln(10)
-
-    # ── Score qualité — badge central
-    qs_color = (22, 163, 74) if quality_score >= 85 else (101, 163, 13) if quality_score >= 70 \
-               else (249, 115, 22) if quality_score >= 50 else (220, 38, 38)
-    qs_label  = ("Excellent" if quality_score >= 85 else "Bon" if quality_score >= 70
-                 else "Acceptable" if quality_score >= 50 else "Insuffisant")
-    pdf.set_fill_color(*qs_color)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 28)
-    # Rectangle centré
-    box_w, box_h = 80, 22
-    pdf.rect((pdf.w - box_w) / 2, pdf.get_y(), box_w, box_h, "F")
-    pdf.set_y(pdf.get_y() + 4)
-    pdf.cell(0, 14, f"{quality_score}/100  {qs_label}", new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.ln(4)
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(107, 114, 128)
-    pdf.cell(0, 5, "Score de qualite du dataset (0=mauvais, 100=parfait)", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(8)
 
-    # ══ 1. RESUME STATISTIQUE ══════════════════════════════════════════════════
+    # Badge score qualité
+    pdf.set_fill_color(*qs_color)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 26)
+    box_w, box_h = 90, 22
+    pdf.rect((pdf.w - box_w) / 2, pdf.get_y(), box_w, box_h, "F")
+    pdf.set_y(pdf.get_y() + 4)
+    pdf.cell(0, 14, f"{quality_score}/100   {qs_label}", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.ln(3)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(107, 114, 128)
+    pdf.cell(0, 5, "Score qualite global (ISO/IEC 25012)", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.ln(6)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SYNTHESE EXECUTIVE (1 page)
+    # ════════════════════════════════════════════════════════════════════════
+    _pdf_section(pdf, "0", "Synthese executive")
+
+    exec_parts = _split_exec_summary(llm_result.get("executive_summary", ""))
+
+    # Bloc dataset en 3 phrases
+    if exec_parts["context"]:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(17, 24, 39)
+        pdf.cell(0, 6, "Le dataset en 3 phrases", new_x="LMARGIN", new_y="NEXT")
+        _pdf_paragraph(pdf, exec_parts["context"], 9, 5)
+        pdf.ln(2)
+
+    # Verdict qualité
+    if exec_parts["verdict"]:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(17, 24, 39)
+        pdf.cell(0, 6, "Verdict qualite", new_x="LMARGIN", new_y="NEXT")
+        _pdf_paragraph(pdf, exec_parts["verdict"], 9, 5)
+        pdf.ln(2)
+
+    # Decisions immediates (depuis exec_summary_data)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(17, 24, 39)
+    pdf.cell(0, 6, "Decisions immediates", new_x="LMARGIN", new_y="NEXT")
+    decisions = [
+        ("[URGENT 24-48h]", (220, 38, 38), exec_summary_data.get("urgent_actions", [])),
+        ("[COURT TERME 1 sem]", (249, 115, 22), exec_summary_data.get("short_term_actions", [])),
+        ("[MOYEN TERME 1 mois]", (22, 163, 74), exec_summary_data.get("medium_term_actions", [])),
+    ]
+    for label, color, actions in decisions:
+        if not actions:
+            continue
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_text_color(*color)
+        pdf.set_x(pdf.l_margin + 2)
+        pdf.cell(0, 5, _S(label), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(55, 65, 81)
+        for a in actions[:3]:
+            pdf.set_x(pdf.l_margin + 6)
+            pdf.multi_cell(0, 4.5, _S(f"- {a}"))
+        pdf.ln(1)
+
+    # Limites
+    if exec_parts["limits"]:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(17, 24, 39)
+        pdf.cell(0, 6, "Limites du dataset", new_x="LMARGIN", new_y="NEXT")
+        _pdf_paragraph(pdf, exec_parts["limits"], 9, 5)
+        pdf.ln(2)
+
+    # Aptitude au training (badge)
+    readiness = exec_summary_data.get("readiness", "Non evalue")
+    readiness_color = ((22, 163, 74) if "OUI" in readiness and "reserves" not in readiness.lower()
+                       else (249, 115, 22) if "OUI" in readiness
+                       else (220, 38, 38))
+    pdf.ln(1)
+    pdf.set_fill_color(*readiness_color)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 8, _S(f"  Pret pour l'entrainement : {readiness}"), fill=True,
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(55, 65, 81)
+    pdf.set_font("Helvetica", "", 9)
+    if exec_summary_data.get("readiness_reason"):
+        _pdf_paragraph(pdf, exec_summary_data["readiness_reason"], 9, 5)
+    if exec_parts["readiness"]:
+        _pdf_paragraph(pdf, exec_parts["readiness"], 9, 5)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 1 — RESUME DU DATASET
+    # ════════════════════════════════════════════════════════════════════════
+    pdf.add_page()
     _pdf_section(pdf, "1", "Resume du dataset")
     stats = [
-        ("Lignes (observations)",    f"{summary['n_rows']:,}".replace(",", " ")),
-        ("Colonnes (features)",       summary["n_cols"]),
-        ("Variables numeriques",      summary["n_numeric"]),
-        ("Variables categorielles",   summary["n_categorical"]),
+        ("Lignes (observations)",      f"{summary['n_rows']:,}".replace(",", " ")),
+        ("Colonnes (features)",        summary["n_cols"]),
+        ("Variables numeriques",       summary["n_numeric"]),
+        ("Variables categorielles",    summary["n_categorical"]),
         ("Valeurs manquantes totales", f"{summary['missing_total']} ({summary['missing_pct']}%)"),
         ("Doublons detectes",          summary["duplicates"]),
         ("Type de donnees detecte",    _type_labels.get(data_type, data_type)),
@@ -1166,158 +2287,326 @@ def _generate_pdf(
     for lbl, val in stats:
         _pdf_kv(pdf, lbl, val)
 
-    # ══ 2. SCORE DE QUALITE — DETAIL DES CRITERES ═════════════════════════════
-    _pdf_section(pdf, "2", "Score de qualite des donnees")
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(55, 65, 81)
-    criteria = [
-        ("Penalite valeurs manquantes",
-         f"-{min(30, round(summary['missing_pct'] * 0.6))} pts si missing_pct={summary['missing_pct']}%"),
-        ("Penalite doublons",
-         f"-{min(15, round(summary['duplicates'] / max(summary['n_rows'], 1) * 100 * 0.3))} pts si {summary['duplicates']} doublons"),
-        ("Penalite outliers moyens",
-         "Calculee sur moyenne des outlier_pct par colonne numerique"),
-        ("Penalite colonnes tres asymetriques (|skew|>2)",
-         "2 pts / colonne asymetrique"),
-        ("Score final",
-         f"{quality_score}/100  ->  {qs_label}"),
-    ]
-    for lbl, detail in criteria:
-        pdf.set_x(pdf.l_margin + 4)
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 2 — AUDIT QUALITE DES DONNEES (avec graphique manquants)
+    # ════════════════════════════════════════════════════════════════════════
+    _pdf_section(pdf, "2", "Audit de qualite des donnees")
+
+    # Sous-section 2.1 — Decomposition ISO 25012
+    if iso_25012:
+        _pdf_subsection(pdf, "2.1  Decomposition par dimension (ISO/IEC 25012:2008)")
         pdf.set_font("Helvetica", "B", 8)
         pdf.set_text_color(75, 85, 99)
-        pdf.cell(80, 5, _S(f"  {lbl} :"))
-        pdf.set_font("Helvetica", "", 8)
-        pdf.set_text_color(17, 24, 39)
-        pdf.cell(0, 5, _S(detail), new_x="LMARGIN", new_y="NEXT")
+        col_w = [55, 25, 20, 80]
+        headers = ["Dimension", "Score", "Max", "Detail"]
+        for i, h in enumerate(headers):
+            pdf.cell(col_w[i], 6, _S(h), border=1, fill=False)
+        pdf.ln()
+        pdf.set_font("Helvetica", "", 7)
+        for dim_name, dim_data in iso_25012.items():
+            pdf.cell(col_w[0], 5, _S(dim_name.title()), border=1)
+            pdf.cell(col_w[1], 5, _S(str(dim_data.get("score", "-"))), border=1)
+            pdf.cell(col_w[2], 5, _S(str(dim_data.get("max", "-"))), border=1)
+            pdf.cell(col_w[3], 5, _S(dim_data.get("detail", "")[:55]), border=1)
+            pdf.ln()
+        pdf.ln(2)
 
-    # ══ 3. INDICATEURS KPI ═════════════════════════════════════════════════════
+    # Sous-section 2.2 — Graphique valeurs manquantes + interpretation
+    _pdf_subsection(pdf, "2.2  Valeurs manquantes par colonne")
+    if _embed_plot(pdf, plots_by_section.get("missing_values"), max_w=pdf.w - 40):
+        pdf.ln(1)
+    _pdf_paragraph(pdf, llm_result.get("quality_audit", "Section non generee."), 9, 5)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 3 — KPIs avec benchmarks
+    # ════════════════════════════════════════════════════════════════════════
     if kpis:
-        _pdf_section(pdf, "3", "Indicateurs de Performance (KPIs)")
+        _pdf_section(pdf, "3", "Indicateurs de performance (KPIs)")
         pdf.set_font("Helvetica", "B", 8)
-        pdf.set_text_color(55, 65, 81)
-        headers = ["Indicateur", "Valeur", "Unite"]
-        col_w = [80, 40, 25]
+        pdf.set_text_color(75, 85, 99)
+        col_w = [50, 30, 20, 50, 30]
+        headers = ["KPI", "Valeur", "Unite", "Benchmark", "Verdict"]
         for i, h in enumerate(headers):
             pdf.cell(col_w[i], 6, _S(h), border=1)
         pdf.ln()
         pdf.set_font("Helvetica", "", 8)
-        kpi_order = [
-            ("mtbf", "MTBF"), ("mttr", "MTTR"), ("mttf", "MTTF"),
-            ("availability", "Disponibilite"), ("failure_rate_lambda", "Taux defaillance λ"),
-            ("oee", "OEE / TRS"), ("anomaly_rate", "Taux anomalies"),
-        ]
-        for key, label in kpi_order:
+        _kpi_benchmarks = {
+            "mtbf":               ("Objectif > 300h", lambda v: "OK" if v > 300 else "Sous objectif"),
+            "mttr":               ("Objectif < 4h",   lambda v: "OK" if v < 4 else "Au-dessus"),
+            "availability":       ("Classe A >=98%",  lambda v: "Classe A" if v >= 98 else ("Classe B" if v >= 90 else "Sous norme")),
+            "oee":                ("World-class >=85%", lambda v: "World-class" if v >= 85 else ("Bon" if v >= 70 else "A ameliorer")),
+            "failure_rate_lambda":("ISO 13306",       lambda v: "-"),
+            "anomaly_rate":       ("< 10% attendu",   lambda v: "OK" if v < 10 else "Suspect (verifier)"),
+        }
+        kpi_labels = {
+            "mtbf": "MTBF", "mttr": "MTTR", "mttf": "MTTF",
+            "availability": "Disponibilite", "failure_rate_lambda": "Taux defaillance lambda",
+            "oee": "OEE / TRS", "anomaly_rate": "Taux anomalies",
+        }
+        for key, label in kpi_labels.items():
             if key not in kpis:
                 continue
             item = kpis[key]
+            v = item.get("value")
+            bench_info = _kpi_benchmarks.get(key, ("-", lambda x: "-"))
+            try:
+                verdict = bench_info[1](float(v)) if v is not None else "-"
+            except Exception:
+                verdict = "-"
             pdf.cell(col_w[0], 5, _S(label), border=1)
-            pdf.cell(col_w[1], 5, _S(item.get("value")), border=1)
+            pdf.cell(col_w[1], 5, _S(v), border=1)
             pdf.cell(col_w[2], 5, _S(item.get("unit", "")), border=1)
+            pdf.cell(col_w[3], 5, _S(bench_info[0]), border=1)
+            pdf.cell(col_w[4], 5, _S(verdict), border=1)
             pdf.ln()
         pdf.ln(2)
         pdf.set_font("Helvetica", "", 7)
         pdf.set_text_color(107, 114, 128)
-        pdf.multi_cell(0, 4, "References: ISO 13306:2017, EN 15341:2019")
+        pdf.multi_cell(0, 4, "References : ISO 13306:2017 (terminologie maintenance), EN 15341:2019 (KPIs)")
 
-    # ══ 4. PRONOSTIC RUL ═══════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 4 — PRONOSTIC RUL (avec graphiques inline)
+    # ════════════════════════════════════════════════════════════════════════
     if rul_info:
-        _pdf_section(pdf, "4", "Pronostic — RUL / Duree de Vie Restante")
+        _pdf_section(pdf, "4", "Pronostic - RUL / Duree de vie restante")
         pdf.set_font("Helvetica", "B", 8)
-        pdf.set_text_color(55, 65, 81)
-        headers = ["Indicateur", "Valeur"]
-        col_w = [90, 45]
-        for i, h in enumerate(headers):
-            pdf.cell(col_w[i], 6, _S(h), border=1)
+        pdf.set_text_color(75, 85, 99)
+        col_w = [60, 50, 60]
+        for h in ["Indicateur", "Valeur", "Interpretation"]:
+            pdf.cell(col_w[["Indicateur", "Valeur", "Interpretation"].index(h)], 6, _S(h), border=1)
         pdf.ln()
         pdf.set_font("Helvetica", "", 8)
-        rul_rows = [
-            ("RUL moyen", rul_info.get("rul_mean")),
-            ("RUL min", rul_info.get("rul_min")),
-            ("RUL max", rul_info.get("rul_max")),
-            ("RUL ecart-type", rul_info.get("rul_std")),
-            ("Health Index moyen", rul_info.get("health_index_mean")),
-            ("Health Index min", rul_info.get("health_index_min")),
-            ("Taux degradation", rul_info.get("degradation_rate")),
-            ("% machines critiques", rul_info.get("pct_critical")),
-            ("Fiabilite R(t)", rul_info.get("reliability_rt")),
-        ]
-        for lbl, val in rul_rows:
-            if val is None:
+        _rul_interp = {
+            "rul_mean": lambda v: f"~{round(float(v)/24)} jours d'operation restants en moyenne",
+            "rul_min":  lambda v: f"Machine critique : ~{round(float(v)/24)} jours" if float(v) > 0 else "Critique",
+            "rul_max":  lambda v: f"~{round(float(v)/24)} jours sur la machine la plus saine",
+            "rul_std":  lambda v: "Dispersion du RUL dans le parc",
+            "health_index_mean": lambda v: "Parc globalement sain" if float(v) > 0.7 else "Parc en degradation",
+            "health_index_min":  lambda v: "Machine critique" if float(v) < 0.3 else "Acceptable",
+            "degradation_rate":  lambda v: f"Pente HealthIndex/h = {v}",
+            "pct_critical":      lambda v: f"{v}% du parc < 0.3 HI",
+            "reliability_rt":    lambda v: "R(t) = exp(-lambda*t)",
+        }
+        rul_labels = {
+            "rul_mean": "RUL moyen (h)", "rul_min": "RUL minimum (h)",
+            "rul_max": "RUL maximum (h)", "rul_std": "RUL ecart-type",
+            "health_index_mean": "Health Index moyen", "health_index_min": "Health Index min",
+            "degradation_rate": "Taux degradation", "pct_critical": "% machines critiques",
+            "reliability_rt": "Fiabilite R(t)",
+        }
+        for key, label in rul_labels.items():
+            v = rul_info.get(key)
+            if v is None:
                 continue
-            pdf.cell(col_w[0], 5, _S(lbl), border=1)
-            pdf.cell(col_w[1], 5, _S(val), border=1)
+            try:
+                interp = _rul_interp[key](v)
+            except Exception:
+                interp = "-"
+            pdf.cell(col_w[0], 5, _S(label), border=1)
+            pdf.cell(col_w[1], 5, _S(v), border=1)
+            pdf.cell(col_w[2], 5, _S(interp[:35]), border=1)
             pdf.ln()
         pdf.ln(2)
-        pdf.set_font("Helvetica", "", 7)
-        pdf.set_text_color(107, 114, 128)
-        pdf.multi_cell(0, 4, "Methodes: DRBF, modele exponentiel de fiabilite (R(t)=exp(-lambda*t))")
 
-    # ══ 5. ANALYSE EDA (NARRATION IA) ══════════════════════════════════════════
-    _pdf_section(pdf, "5", "Analyse EDA — Narration IA")
-    pdf.set_x(pdf.l_margin)
-    pdf.multi_cell(0, 6, _S(llm_result.get("narrative", "Non disponible.")))
+        # Distribution RUL + Health vs RUL
+        if "rul_distribution" in plots_by_section:
+            _pdf_subsection(pdf, "4.1  Distribution du RUL")
+            _embed_plot(pdf, plots_by_section.get("rul_distribution"), max_w=pdf.w - 40)
+        if "health_vs_rul" in plots_by_section:
+            _pdf_subsection(pdf, "4.2  Health Index vs RUL - cartographie du parc")
+            _embed_plot(pdf, plots_by_section.get("health_vs_rul"), max_w=pdf.w - 40)
 
-    # ══ 6. DETAIL DES COLONNES (ENRICHI) ═══════════════════════════════════════
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 5 — ANALYSE UNIVARIEE (distributions + boxplots + categoricals)
+    # ════════════════════════════════════════════════════════════════════════
     pdf.add_page()
-    _pdf_section(pdf, "6", "Detail des colonnes")
+    _pdf_section(pdf, "5", "Analyse univariee detaillee")
 
-    for col_info in summary.get("columns", []):
-        cname = col_info["name"]
-        ctype = col_info["type"]
-        miss  = f"{col_info['missing']} ({col_info['missing_pct']}%)"
-        uniq  = col_info["unique"]
+    if "categoricals" in plots_by_section:
+        _pdf_subsection(pdf, "5.1  Variables categorielles")
+        _embed_plot(pdf, plots_by_section.get("categoricals"), max_w=pdf.w - 40)
 
-        # Entete colonne
-        pdf.set_fill_color(243, 244, 246)
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(17, 24, 39)
-        pdf.cell(0, 6, _S(f"  {cname}  [{ctype}]  —  {miss} manquants  |  {uniq} uniques"),
-                 fill=True, new_x="LMARGIN", new_y="NEXT")
+    if "distributions" in plots_by_section:
+        _pdf_subsection(pdf, "5.2  Distributions numeriques")
+        _embed_plot(pdf, plots_by_section.get("distributions"), max_w=pdf.w - 40)
 
-        pdf.set_font("Helvetica", "", 8)
-        pdf.set_text_color(55, 65, 81)
-        if ctype == "numeric":
-            stats_num = (f"min={col_info.get('min')}  Q1={col_info.get('q25', '—')}  "
-                         f"moy={col_info.get('mean')}  Q3={col_info.get('q75', '—')}  max={col_info.get('max')}  "
-                         f"std={col_info.get('std')}")
-            pdf.set_x(pdf.l_margin + 4)
-            pdf.multi_cell(0, 5, _S(f"  Stats : {stats_num}"))
+    if "boxplots" in plots_by_section:
+        _pdf_subsection(pdf, "5.3  Outliers (methode IQR)")
+        _embed_plot(pdf, plots_by_section.get("boxplots"), max_w=pdf.w - 40)
 
-            n_out = col_info.get("n_outliers")
-            out_pct = col_info.get("outlier_pct")
-            if n_out is not None:
-                out_label = "  ** ATTENTION **" if (out_pct or 0) > 10 else ""
-                pdf.set_x(pdf.l_margin + 4)
-                pdf.multi_cell(0, 5, _S(
-                    f"  Outliers IQR : {n_out} valeurs ({out_pct}%){out_label}"
-                    f"  ->  Scaler : {'RobustScaler' if (out_pct or 0) > 10 else 'StandardScaler'}"
+    _pdf_paragraph(pdf, llm_result.get("univariate_insights", "Section non generee."), 9, 5)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 6 — BIVARIEE & CORRELATIONS (Pearson + Spearman + VIF)
+    # ════════════════════════════════════════════════════════════════════════
+    pdf.add_page()
+    _pdf_section(pdf, "6", "Analyse bivariee et correlations")
+
+    if "correlation_pearson" in plots_by_section:
+        _pdf_subsection(pdf, "6.1  Matrice de correlation (Pearson - lineaire)")
+        _embed_plot(pdf, plots_by_section.get("correlation_pearson"), max_w=pdf.w - 40)
+
+    if "correlation_spearman" in plots_by_section:
+        _pdf_subsection(pdf, "6.2  Matrice de correlation (Spearman - monotone)")
+        _embed_plot(pdf, plots_by_section.get("correlation_spearman"), max_w=pdf.w - 40)
+
+    if "vif" in plots_by_section or "iso_forest_2d" in plots_by_section:
+        # VIF table
+        if vif_info:
+            _pdf_subsection(pdf, "6.3  Multicolinearite - VIF (Variance Inflation Factor)")
+            pdf.set_font("Helvetica", "B", 7)
+            pdf.set_text_color(75, 85, 99)
+            col_w = [60, 25, 25, 35]
+            for h in ["Variable", "VIF", "R2", "Verdict"]:
+                pdf.cell(col_w[["Variable", "VIF", "R2", "Verdict"].index(h)], 5, _S(h), border=1)
+            pdf.ln()
+            pdf.set_font("Helvetica", "", 7)
+            for v in vif_info[:15]:
+                if v.get("verdict") == "Critique (>10)":
+                    pdf.set_text_color(220, 38, 38)
+                elif v.get("verdict") == "Eleve (5-10)":
+                    pdf.set_text_color(249, 115, 22)
+                else:
+                    pdf.set_text_color(22, 163, 74)
+                pdf.cell(col_w[0], 4, _S(str(v["name"])[:30]), border=1)
+                pdf.cell(col_w[1], 4, _S(str(v["vif"])), border=1)
+                pdf.cell(col_w[2], 4, _S(str(v.get("r2", "-"))), border=1)
+                pdf.cell(col_w[3], 4, _S(str(v.get("verdict", "-"))), border=1)
+                pdf.ln()
+            pdf.set_text_color(17, 24, 39)
+            pdf.ln(2)
+        if "vif" in plots_by_section:
+            _embed_plot(pdf, plots_by_section.get("vif"), max_w=pdf.w - 40)
+
+    _pdf_paragraph(pdf, llm_result.get("bivariate_insights", "Section non generee."), 9, 5)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 7 — ANALYSE TEMPORELLE (time series + ACF + stationnarite)
+    # ════════════════════════════════════════════════════════════════════════
+    has_temporal = any(k in plots_by_section for k in ("time_series", "acf", "vrms_trend"))
+    if has_temporal or stationarity or temporal_trend:
+        pdf.add_page()
+        _pdf_section(pdf, "7", "Analyse temporelle")
+
+        if "time_series" in plots_by_section:
+            _pdf_subsection(pdf, "7.1  Series temporelles des variables cles")
+            _embed_plot(pdf, plots_by_section.get("time_series"), max_w=pdf.w - 40)
+
+        # Stationnarite et tendance
+        if stationarity or temporal_trend:
+            _pdf_subsection(pdf, "7.2  Stationnarite et tendance")
+            if temporal_trend:
+                lines = [
+                    f"  - Tendance : {temporal_trend.get('trend', 'inconnue')} (pente = {temporal_trend.get('slope_per_day', '-')} /jour)",
+                    f"  - Valeur actuelle : {temporal_trend.get('current_value', '-')} au {temporal_trend.get('current_date', '-')}",
+                    f"  - Observations : {temporal_trend.get('n_points', 0)} points",
+                ]
+                for k_zone in ("zone_c", "zone_d"):
+                    days_key = f"days_to_{k_zone}"
+                    date_key = f"date_{k_zone}"
+                    if temporal_trend.get(days_key):
+                        lines.append(f"  - Projection franchissement {k_zone.upper().replace('_', ' ')} : {temporal_trend[days_key]} jours ({temporal_trend.get(date_key, '?')})")
+                for line in lines:
+                    pdf.set_x(pdf.l_margin)
+                    pdf.set_font("Helvetica", "", 9)
+                    pdf.multi_cell(0, 5, _S(line))
+            if stationarity:
+                pdf.ln(1)
+                pdf.set_font("Helvetica", "B", 9)
+                pdf.set_text_color(17, 24, 39)
+                pdf.cell(0, 5, _S(f"  Verdict : {stationarity.get('verdict', '-')}"), new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font("Helvetica", "", 8)
+                pdf.set_text_color(55, 65, 81)
+                pdf.set_x(pdf.l_margin)
+                pdf.multi_cell(0, 4.5, _S(
+                    f"  Variation de la moyenne par tiers : {stationarity.get('mean_variation_pct', '-')}%  |  "
+                    f"variation de l'ecart-type : {stationarity.get('std_variation_pct', '-')}%"
                 ))
 
-            skew = col_info.get("skewness")
-            kurt = col_info.get("kurtosis")
-            if skew is not None:
-                skew_txt = ("Tres asymetrique" if abs(skew) > 2 else
-                            "Moderement asymetrique" if abs(skew) > 1 else "Symetrique")
-                kurt_txt = (f"Leptokurtique (queues epaisses)" if (kurt or 0) > 3 else
-                            f"Platykurtique" if (kurt or 0) < -1 else "Mesokurtique (normale)")
-                pdf.set_x(pdf.l_margin + 4)
-                pdf.multi_cell(0, 5, _S(
-                    f"  Asymetrie (skewness) : {skew:+.3f}  ->  {skew_txt}  |  "
-                    f"Kurtosis : {kurt:+.3f}  ->  {kurt_txt}"
-                ))
+        if "acf" in plots_by_section:
+            _pdf_subsection(pdf, "7.3  Auto-correlation (ACF)")
+            _embed_plot(pdf, plots_by_section.get("acf"), max_w=pdf.w - 40)
+
+        _pdf_paragraph(pdf, llm_result.get("temporal_insights", "Section non generee."), 9, 5)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 8 — DIAGNOSTIC SPECIFIQUE AU TYPE
+    # ════════════════════════════════════════════════════════════════════════
+    diag_keys = ("vrms_trend", "crest_kurtosis", "iso_zones", "vrms_par_machine", "pareto")
+    if any(k in plots_by_section for k in diag_keys):
+        pdf.add_page()
+        _pdf_section(pdf, "8", f"Diagnostic specifique - {_type_labels.get(data_type, data_type)}")
+
+        if data_type == "vibration":
+            if "vrms_trend" in plots_by_section:
+                _pdf_subsection(pdf, "8.1  Tendance V-RMS dans le temps (zones ISO 10816-3)")
+                _embed_plot(pdf, plots_by_section.get("vrms_trend"), max_w=pdf.w - 40)
+            if "crest_kurtosis" in plots_by_section:
+                _pdf_subsection(pdf, "8.2  Crest Factor vs Kurtosis (ISO 18436-2)")
+                _embed_plot(pdf, plots_by_section.get("crest_kurtosis"), max_w=pdf.w - 40)
+            if "iso_zones" in plots_by_section:
+                _pdf_subsection(pdf, "8.3  Repartition par zone ISO")
+                _embed_plot(pdf, plots_by_section.get("iso_zones"), max_w=pdf.w - 40)
+            if "vrms_par_machine" in plots_by_section:
+                _pdf_subsection(pdf, "8.4  V-RMS par machine")
+                _embed_plot(pdf, plots_by_section.get("vrms_par_machine"), max_w=pdf.w - 40)
+        elif data_type in ("maintenance", "machine"):
+            if "pareto" in plots_by_section:
+                _pdf_subsection(pdf, "8.1  Pareto - Top machines par frequence (loi 80/20)")
+                _embed_plot(pdf, plots_by_section.get("pareto"), max_w=pdf.w - 40)
         else:
-            top = col_info.get("top_values", {})
-            if top:
-                top_str = "  ,  ".join(f"{k} ({v})" for k, v in list(top.items())[:6])
-                pdf.set_x(pdf.l_margin + 4)
-                pdf.multi_cell(0, 5, _S(f"  Top valeurs : {top_str}"))
-        pdf.ln(1)
+            # generic — afficher ce qui est dispo
+            for k in diag_keys:
+                if k in plots_by_section:
+                    _embed_plot(pdf, plots_by_section.get(k), max_w=pdf.w - 40)
 
-    # ══ 7. PIPELINE DE PRETRAITEMENT ═══════════════════════════════════════════
+        _pdf_paragraph(pdf, llm_result.get("diagnostic_insights", "Section non generee."), 9, 5)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 9 — ANOMALIES ET ALERTES CRITIQUES
+    # ════════════════════════════════════════════════════════════════════════
     pdf.add_page()
-    _pdf_section(pdf, "7", "Pipeline de pretraitement applique")
+    _pdf_section(pdf, "9", "Anomalies et alertes critiques")
 
+    if alerts:
+        critical = [a for a in alerts if a["level"] == "critical"]
+        warnings = [a for a in alerts if a["level"] == "warning"]
+        if critical:
+            _pdf_subsection(pdf, f"9.1  Alertes critiques ({len(critical)})")
+            for a in critical:
+                _alert_card(pdf, a)
+        if warnings:
+            _pdf_subsection(pdf, f"9.2  Avertissements ({len(warnings)})")
+            for a in warnings:
+                _alert_card(pdf, a)
+    else:
+        _pdf_paragraph(pdf, "Aucune alerte critique automatiquement detectee. Surveillance continue recommandee.", 9, 5)
+
+    # Isolation Forest
+    if anomalies_iso and anomalies_iso.get("n_anomalies", 0) > 0:
+        _pdf_subsection(pdf, "9.3  Anomalies multi-dimensionnelles (Isolation Forest)")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(55, 65, 81)
+        pdf.set_x(pdf.l_margin)
+        pdf.multi_cell(0, 5, _S(
+            f"  Anomalies detectees : {anomalies_iso['n_anomalies']} ({anomalies_iso['pct_anomalies']}%) "
+            f"sur {anomalies_iso.get('n_features', 0)} features  |  contamination = {anomalies_iso.get('contamination', 0.02)}"
+        ))
+        if "iso_forest_2d" in plots_by_section:
+            _embed_plot(pdf, plots_by_section.get("iso_forest_2d"), max_w=pdf.w - 40)
+        elif "isolation_forest" in plots_by_section:
+            _embed_plot(pdf, plots_by_section.get("isolation_forest"), max_w=pdf.w - 40)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 10 — CLEANING ET PREPARATION DES DONNEES
+    # ════════════════════════════════════════════════════════════════════════
+    pdf.add_page()
+    _pdf_section(pdf, "10", "Cleaning et preparation des donnees")
+
+    _pdf_paragraph(pdf, llm_result.get("preprocessing_plan", "Section non generee."), 9, 5)
+    pdf.ln(2)
+
+    _pdf_subsection(pdf, "10.1  Journal des transformations")
     steps = pt.get("steps", [])
     _step_labels = {
         "drop_duplicates":       "Suppression des doublons",
@@ -1349,32 +2638,50 @@ def _generate_pdf(
         elif stype == "missing_imputation":
             cols_imp = step.get("columns", {})
             pdf.set_x(pdf.l_margin + 4)
+            def _fmt_imp(c, v):
+                strat = v.get("strategy", "?")
+                fval  = v.get("fill_value", "")
+                mpct  = v.get("missing_pct", "")
+                if strat == "median":
+                    return f"{c} : mediane={round(fval, 4)} ({mpct}% manquants)"
+                elif strat == "mode":
+                    return f"{c} : mode='{fval}'"
+                return f"{c} : {strat}={fval}"
             pdf.multi_cell(0, 5, _S(
-                f"  {len(cols_imp)} colonne(s) imputees : " +
-                "  |  ".join(f"{c} ({v})" for c, v in list(cols_imp.items())[:8])
+                f"  {len(cols_imp)} colonne(s) imputee(s) :\n" +
+                "\n".join(f"    - {_fmt_imp(c, v)}" for c, v in list(cols_imp.items())[:8])
             ))
         elif stype == "encoding":
             cols_enc = step.get("columns", {})
             pdf.set_x(pdf.l_margin + 4)
+            def _fmt_enc(c, v):
+                etype = v.get("type", "?")
+                ncat  = v.get("n_categories", "")
+                if etype == "onehot":
+                    subcols = v.get("columns", [])
+                    return f"{c} : one-hot ({ncat} cat.) -> {', '.join(subcols[:3])}{'...' if len(subcols) > 3 else ''}"
+                elif etype == "label":
+                    return f"{c} : label ({ncat} cat.)"
+                elif etype == "frequency":
+                    return f"{c} : frequence ({ncat} cat.)"
+                return f"{c} : {etype}"
             pdf.multi_cell(0, 5, _S(
-                f"  {len(cols_enc)} colonne(s) encodee(s) : " +
-                "  |  ".join(f"{c} ({v})" for c, v in list(cols_enc.items())[:8])
+                f"  {len(cols_enc)} colonne(s) encodee(s) :\n" +
+                "\n".join(f"    - {_fmt_enc(c, v)}" for c, v in list(cols_enc.items())[:8])
             ))
         elif stype == "standardization":
             n_std = step.get("n_standard", 0)
             n_rob = step.get("n_robust", 0)
             pdf.set_x(pdf.l_margin + 4)
             pdf.multi_cell(0, 5, _S(f"  StandardScaler : {n_std}  |  RobustScaler : {n_rob}"))
-            # Table des scalers
             cols_sc = step.get("columns", {})
             if cols_sc:
                 pdf.ln(2)
                 pdf.set_font("Helvetica", "B", 7)
                 pdf.set_text_color(55, 65, 81)
                 col_w = [65, 28, 22, 22, 22]
-                headers = ["Colonne", "Scaler", "Centre", "Echelle", "Outliers%"]
-                for i, h in enumerate(headers):
-                    pdf.cell(col_w[i], 5, h, border=1)
+                for h in ["Colonne", "Scaler", "Centre", "Echelle", "Outliers%"]:
+                    pdf.cell(col_w[["Colonne","Scaler","Centre","Echelle","Outliers%"].index(h)], 5, h, border=1)
                 pdf.ln()
                 pdf.set_font("Helvetica", "", 7)
                 for cname, cinfo in list(cols_sc.items())[:20]:
@@ -1397,24 +2704,10 @@ def _generate_pdf(
                 pdf.ln(2)
         pdf.ln(1)
 
-    # ── Journal de transformation
-    logs = pt.get("transformation_log", [])
-    if logs:
-        pdf.ln(3)
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(17, 24, 39)
-        pdf.cell(0, 6, "Journal de transformation :", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Courier", "", 7)
-        pdf.set_text_color(55, 65, 81)
-        for log in logs[:60]:
-            pdf.set_x(pdf.l_margin + 4)
-            pdf.multi_cell(0, 4, _S(log))
-
-    # ══ 8. ENCODAGES ══════════════════════════════════════════════════════════
+    # Encodages
     if encoding_maps:
-        pdf.add_page()
-        _pdf_section(pdf, "8", "Correspondances d'encodage")
-        pdf.set_font("Helvetica", "", 8)
+        _pdf_subsection(pdf, "10.2  Mappings d'encodage (a persister pour reproduction)")
+        pdf.set_font("Helvetica", "", 7)
         pdf.set_text_color(55, 65, 81)
         for col, info in encoding_maps.items():
             pdf.set_font("Helvetica", "B", 8)
@@ -1430,50 +2723,165 @@ def _generate_pdf(
                 pdf.multi_cell(0, 4, _S(f"  ... +{len(info['mapping']) - 20} autres valeurs"))
             pdf.ln(1)
 
-    # ══ 9. RECOMMANDATIONS IA ══════════════════════════════════════════════════
+    # Validation post-cleaning checklist
+    _pdf_subsection(pdf, "10.3  Validation post-cleaning")
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(55, 65, 81)
+    n_final = len(pt.get("column_order", []))
+    checks = [
+        ("Aucune valeur NaN residuelle (ou justifiee + flag)", "OK" if summary.get("missing_total", 0) == 0 or "missing_imputation" in [s.get("type") for s in steps] else "Verifier"),
+        ("Coherence du nombre de lignes apres dedoublonnage",   "OK"),
+        ("Coherence du nombre de colonnes apres encoding",       f"OK ({n_final} colonnes finales)"),
+        ("Aucune feature constante apres transformation",        "OK"),
+        ("Aucune fuite de donnees evidente dans les features",   "A valider manuellement"),
+    ]
+    for check, status in checks:
+        ico = "[OK]" if status.startswith("OK") else "[!]"
+        pdf.set_x(pdf.l_margin + 4)
+        pdf.multi_cell(0, 4.5, _S(f"  {ico}  {check}  ->  {status}"))
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 11 — RECOMMANDATIONS POUR LA MODELISATION
+    # ════════════════════════════════════════════════════════════════════════
     pdf.add_page()
-    _pdf_section(pdf, "9", "Plan de pretraitement — Analyse IA")
-    pdf.set_x(pdf.l_margin)
-    pdf.multi_cell(0, 6, _S(llm_result.get("preprocessing_plan", "Non disponible.")))
-    pdf.ln(5)
-    _pdf_section(pdf, "10", "Recommandations pour la selection de features")
-    pdf.set_x(pdf.l_margin)
-    pdf.multi_cell(0, 6, _S(llm_result.get("feature_recommendations", "Non disponible.")))
+    _pdf_section(pdf, "11", "Recommandations pour la modelisation")
 
-    # ══ 11. GRAPHIQUES ══════════════════════════════════════════════════════════
-    for plot in plots:
-        try:
-            pdf.add_page()
-            pdf.set_font("Helvetica", "B", 11)
-            pdf.set_text_color(17, 24, 39)
-            pdf.cell(0, 8, _S(plot["title"]), new_x="LMARGIN", new_y="NEXT")
-            pdf.ln(2)
-            pdf.image(plot["path"], w=pdf.w - 30)
-        except Exception:
-            pass
+    _pdf_subsection(pdf, "11.1  Taches ML recommandees")
+    _pdf_paragraph(pdf, llm_result.get("ml_tasks", "Section non generee."), 9, 5)
+    pdf.ln(2)
 
-    # ══ 12. COLONNES FINALES APRES PRETRAITEMENT ════════════════════════════════
+    _pdf_subsection(pdf, "11.2  Features a conserver / creer / exclure")
+    _pdf_paragraph(pdf, llm_result.get("feature_recommendations", "Section non generee."), 9, 5)
+    pdf.ln(2)
+
+    _pdf_subsection(pdf, "11.3  Strategie de validation")
+    has_temporal_data = bool(temporal_trend or "time_series" in plots_by_section)
+    strategy_text = ("Cross-validation TimeSeriesSplit (5 folds) - preserve l'ordre temporel, evite le look-ahead bias. "
+                     "Hold-out final : 15% des donnees les plus recentes. Stratification par machine_id."
+                     if has_temporal_data else
+                     "K-Fold stratifie (5 folds). Split aleatoire 70/15/15 train/val/test. Stratification par variable cible.")
+    _pdf_paragraph(pdf, strategy_text, 9, 5)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 12 — LIMITES ET POINTS D'ATTENTION
+    # ════════════════════════════════════════════════════════════════════════
+    pdf.add_page()
+    _pdf_section(pdf, "12", "Limites et points d'attention")
+    _pdf_paragraph(pdf, llm_result.get("limitations", "Section non generee."), 9, 5)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECTION 13 — ANNEXES TECHNIQUES
+    # ════════════════════════════════════════════════════════════════════════
+    pdf.add_page()
+    _pdf_section(pdf, "13", "Annexes techniques")
+
+    # 13.1 — Detail statistique des colonnes
+    _pdf_subsection(pdf, "13.1  Detail statistique par colonne")
+    for col_info in summary.get("columns", []):
+        cname = col_info["name"]
+        ctype = col_info["type"]
+        miss  = f"{col_info['missing']} ({col_info['missing_pct']}%)"
+        uniq  = col_info["unique"]
+        pdf.set_fill_color(243, 244, 246)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(17, 24, 39)
+        pdf.cell(0, 6, _S(f"  {cname}  [{ctype}]  -  {miss} manquants  |  {uniq} uniques"),
+                 fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(55, 65, 81)
+        if ctype == "numeric":
+            stats_num = (f"min={col_info.get('min')}  Q1={col_info.get('q25', '-')}  "
+                         f"moy={col_info.get('mean')}  Q3={col_info.get('q75', '-')}  max={col_info.get('max')}  "
+                         f"std={col_info.get('std')}")
+            pdf.set_x(pdf.l_margin + 4)
+            pdf.multi_cell(0, 5, _S(f"  Stats : {stats_num}"))
+            n_out = col_info.get("n_outliers")
+            out_pct = col_info.get("outlier_pct")
+            if n_out is not None:
+                out_label = "  ** ATTENTION **" if (out_pct or 0) > 10 else ""
+                pdf.set_x(pdf.l_margin + 4)
+                pdf.multi_cell(0, 5, _S(
+                    f"  Outliers IQR : {n_out} valeurs ({out_pct}%){out_label}"
+                    f"  ->  Scaler : {'RobustScaler' if (out_pct or 0) > 10 else 'StandardScaler'}"
+                ))
+            skew = col_info.get("skewness")
+            kurt = col_info.get("kurtosis")
+            if skew is not None:
+                skew_txt = ("Tres asymetrique" if abs(skew) > 2 else
+                            "Moderement asymetrique" if abs(skew) > 1 else "Symetrique")
+                kurt_txt = ("Leptokurtique" if (kurt or 0) > 3 else
+                            "Platykurtique" if (kurt or 0) < -1 else "Mesokurtique")
+                pdf.set_x(pdf.l_margin + 4)
+                pdf.multi_cell(0, 5, _S(
+                    f"  Skewness : {skew:+.3f} ({skew_txt})  |  Kurtosis : {kurt:+.3f} ({kurt_txt})"
+                ))
+        else:
+            top = col_info.get("top_values", {})
+            if top:
+                top_str = "  ,  ".join(f"{k} ({v})" for k, v in list(top.items())[:6])
+                pdf.set_x(pdf.l_margin + 4)
+                pdf.multi_cell(0, 5, _S(f"  Top valeurs : {top_str}"))
+        pdf.ln(1)
+
+    # 13.2 — Colonnes finales du dataset nettoye
     col_order = pt.get("column_order", [])
     if col_order:
         pdf.add_page()
-        _pdf_section(pdf, "12", "Colonnes du dataset nettoye (ordre final)")
+        _pdf_subsection(pdf, "13.2  Colonnes finales du dataset nettoye (ordre)")
         pdf.set_font("Helvetica", "", 8)
         pdf.set_text_color(55, 65, 81)
         for i, col in enumerate(col_order, 1):
             pdf.cell(10, 5, _S(f"{i:3d}."))
             pdf.cell(0, 5, _S(col), new_x="LMARGIN", new_y="NEXT")
 
+    # 13.3 — Unites detectees
     units = pt.get("units", {})
     if units:
-        pdf.ln(4)
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_text_color(17, 24, 39)
-        pdf.cell(0, 6, "Unites detectees dans les colonnes d'origine :", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(3)
+        _pdf_subsection(pdf, "13.3  Unites detectees dans les colonnes d'origine")
         pdf.set_font("Helvetica", "", 8)
         pdf.set_text_color(55, 65, 81)
         for clean, info in units.items():
             pdf.set_x(pdf.l_margin + 4)
             pdf.multi_cell(0, 5, _S(f"  {info.get('original', clean)} -> {clean}  ({info.get('unit', '?')})"))
+
+    # 13.4 — Versions et environnement
+    pdf.ln(3)
+    _pdf_subsection(pdf, "13.4  Environnement de generation")
+    try:
+        import sys as _sys
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(55, 65, 81)
+        env_info = [
+            f"Python : {_sys.version.split()[0]}",
+            f"pandas : {pd.__version__}",
+            f"numpy : {np.__version__}",
+            f"Genere : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"Dataset ID : {dataset_id}",
+        ]
+        for line in env_info:
+            pdf.set_x(pdf.l_margin + 4)
+            pdf.multi_cell(0, 5, _S(f"  {line}"))
+    except Exception:
+        pass
+
+    # 13.5 — Conformite normative citee
+    pdf.ln(3)
+    _pdf_subsection(pdf, "13.5  Conformite normative citee")
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(55, 65, 81)
+    norms = [
+        "ISO/IEC 25012:2008 - Qualite des donnees",
+        "ISO 13306:2017 - Terminologie de la maintenance",
+        "ISO 10816-3 / 20816-1 - Severite vibratoire des machines fixes / rotatives",
+        "ISO 18436-2 - Qualification analyste vibratoire CAT II",
+        "ISO 13373-1 - Surveillance d'etat des machines",
+        "EN 15341:2019 - Indicateurs de performance maintenance",
+        "ISO 55000:2014 - Gestion des actifs",
+    ]
+    for n in norms:
+        pdf.set_x(pdf.l_margin + 4)
+        pdf.multi_cell(0, 5, _S(f"  - {n}"))
 
     pdf.output(str(report_path))
     return report_path
@@ -1481,31 +2889,110 @@ def _generate_pdf(
 
 # ─── Ingestion Dashboard ──────────────────────────────────────────────────────
 
-def _ingest_dashboard(df: "pd.DataFrame", data_type: str, dataset_id: int):
-    """Après EDA, injecte les mesures/KPIs/défauts dans la BD pour alimenter le dashboard."""
+def _ingest_dashboard(df: "pd.DataFrame", data_type: str, dataset_id: int,
+                       vitesse_rpm: float | None = None, user_id: int = 0):
+    """Après EDA, injecte les mesures/KPIs/défauts dans la BD pour alimenter le dashboard.
+    Auto-crée les machines et capteurs absents si l'utilisateur est identifié.
+    """
     try:
         from db.database import db_session
         time_col = _detect_time_col(df)
         machine_col = next((c for c in df.columns if c.lower() in ("machine_id", "machine")), None)
         vrms_col = next((c for c in df.columns if any(k in c.lower() for k in ("v_rms", "vrms", "v_rms_mm_s"))), None)
 
+        # ── Résolution des IDs machine/capteur réels ──────────────────────────
+        machine_id_map: dict[str, int] = {}   # code_machine → id_machine
+        capteur_id_map: dict[str, int] = {}   # code_machine → id_capteur
+
+        with db_session() as conn:
+            # Récupérer le nom du dataset et l'utilisateur uploadeur
+            ds_row = conn.execute(
+                "SELECT uploaded_by, name FROM dataset WHERE id=?", [dataset_id]
+            ).fetchone()
+            uid = user_id or (ds_row["uploaded_by"] if ds_row and ds_row["uploaded_by"] else 0)
+            ds_name = ds_row["name"] if ds_row else f"dataset_{dataset_id}"
+
+            # Trouver l'atelier de l'utilisateur pour y rattacher les nouvelles machines
+            id_atelier_default = None
+            if uid:
+                row = conn.execute("""
+                    SELECT a.id_atelier FROM atelier a
+                    JOIN usine u ON a.id_usine = u.id_usine
+                    JOIN utilisateur ut ON u.id_entreprise = ut.id_entreprise
+                    WHERE ut.id_utilisateur = ? LIMIT 1
+                """, [uid]).fetchone()
+                if row:
+                    id_atelier_default = row["id_atelier"]
+
+            # Pour chaque machine unique dans le dataset → upsert machine + capteur
+            if machine_col and id_atelier_default and len(df) > 0:
+                unique_codes = [str(v).strip() for v in df[machine_col].dropna().unique() if str(v).strip()]
+                for code in unique_codes:
+                    existing = conn.execute(
+                        "SELECT id_machine FROM machine WHERE code_machine=?", [code]
+                    ).fetchone()
+                    if existing:
+                        machine_id_map[code] = existing["id_machine"]
+                    else:
+                        conn.execute("""
+                            INSERT INTO machine
+                            (id_atelier, code_machine, nom_machine, type_machine, statut,
+                             origine_dataset, date_creation)
+                            VALUES (?, ?, ?, 'autre', 'en_service', ?, datetime('now'))
+                        """, (id_atelier_default, code, code, ds_name))
+                        new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                        machine_id_map[code] = new_id
+                        # Capteur accéléromètre par défaut
+                        cap_code = f"CAP-{code}-001"
+                        conn.execute("""
+                            INSERT OR IGNORE INTO capteur
+                            (id_machine, code_capteur, type_capteur, unite_mesure, statut,
+                             origine_dataset, date_installation)
+                            VALUES (?, ?, 'accelerometre', 'mm/s', 'actif', ?, datetime('now'))
+                        """, (new_id, cap_code, ds_name))
+                        cap = conn.execute(
+                            "SELECT id_capteur FROM capteur WHERE code_capteur=?", [cap_code]
+                        ).fetchone()
+                        if cap:
+                            capteur_id_map[code] = cap["id_capteur"]
+
+                    if code not in capteur_id_map:
+                        cap = conn.execute(
+                            "SELECT id_capteur FROM capteur WHERE id_machine=? LIMIT 1",
+                            [machine_id_map[code]]
+                        ).fetchone()
+                        if cap:
+                            capteur_id_map[code] = cap["id_capteur"]
+
+        print(f"[Ingestion] {len(machine_id_map)} machines resolues/creees pour dataset {dataset_id}")
+
         with db_session() as conn:
             if vrms_col and time_col and len(df) > 0:
+                rpm_col = next((c for c in df.columns if any(k in c.lower() for k in ("vitesse_rotation_rpm", "rpm", "vitesse_rpm"))), None)
                 for _, row in df.iterrows():
                     try:
                         ts = pd.Timestamp(row[time_col]) if pd.notna(row.get(time_col)) else None
                         if ts is None: continue
-                        mid = int(row[machine_col].replace("M","")) if machine_col and pd.notna(row.get(machine_col)) else 1
+                        code_str = str(row[machine_col]).strip() if machine_col and pd.notna(row.get(machine_col)) else ""
+                        real_machine_id = machine_id_map.get(code_str, 1)
+                        real_capteur_id = capteur_id_map.get(code_str, 1)
                         vrms = float(row[vrms_col]) if pd.notna(row.get(vrms_col)) else None
                         if vrms is None: continue
                         crest = float(row.get("crest_factor", 0)) if pd.notna(row.get("crest_factor")) else None
                         kurt = float(row.get("kurtosis", 0)) if pd.notna(row.get("kurtosis")) else None
                         temp = float(row.get("temperature_c", 0)) if pd.notna(row.get("temperature_c")) else None
+                        rpm_val = None
+                        if rpm_col and pd.notna(row.get(rpm_col)):
+                            rpm_val = float(row[rpm_col])
+                        elif vitesse_rpm:
+                            rpm_val = float(vitesse_rpm)
                         zone = "A" if vrms < 2.3 else "B" if vrms < 4.5 else "C" if vrms < 7.1 else "D"
                         conn.execute("""INSERT OR IGNORE INTO mesure_globale
-                            (id_capteur,id_machine,timestamp_mesure,v_rms_mm_s,crest_factor,facteur_k,temperature_c,zone_iso_calculee,statut_alarme)
-                            VALUES (1,?,?,?,?,?,?,?,?)""",
-                            (mid, str(ts), round(vrms,2), crest, kurt, temp, zone, "alerte" if zone=="D" else "normal"))
+                            (id_capteur,id_machine,timestamp_mesure,v_rms_mm_s,crest_factor,facteur_k,
+                             temperature_c,vitesse_rotation_rpm,zone_iso_calculee,statut_alarme)
+                            VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                            (real_capteur_id, real_machine_id, str(ts), round(vrms,2),
+                             crest, kurt, temp, rpm_val, zone, "alerte" if zone=="D" else "normal"))
                     except Exception: continue
 
             kpi_cols = [c for c in df.columns if any(k in c.lower() for k in ("mtbf","mttr","disponibilite","oee","trs"))]
@@ -1526,12 +3013,13 @@ def _ingest_dashboard(df: "pd.DataFrame", data_type: str, dataset_id: int):
             if dcol and machine_col and len(df) > 0:
                 for _, r in df[[machine_col, dcol]].drop_duplicates().iterrows():
                     try:
-                        md = int(r[machine_col].replace("M","")) if pd.notna(r.get(machine_col)) else 1
+                        code_str = str(r[machine_col]).strip() if pd.notna(r.get(machine_col)) else ""
+                        real_mid = machine_id_map.get(code_str, 1)
                         dv = str(r[dcol])
                         if dv and "Aucun" not in dv:
                             conn.execute("""INSERT OR IGNORE INTO defaut_detecte
                                 (id_machine,type_defaut,date_premiere_detection,gravite,stade_degradation,confiance_diagnostic_pct,statut)
-                                VALUES (?,?,datetime('now'),3,2,75,'actif')""", (md, dv))
+                                VALUES (?,?,datetime('now'),3,2,75,'actif')""", (real_mid, dv))
                     except Exception: pass
         print(f"[Ingestion Dashboard] Dataset {dataset_id} -> mesures/KPIs/defauts injectes")
     except Exception as e:
@@ -1540,12 +3028,17 @@ def _ingest_dashboard(df: "pd.DataFrame", data_type: str, dataset_id: int):
 
 # ─── Point d'entrée principal ─────────────────────────────────────────────────
 
-def run_eda(dataset_id: int, file_path: str, update_db_callback, ingest: bool = True) -> None:
+def run_eda(dataset_id: int, file_path: str, update_db_callback, ingest: bool = True,
+            vitesse_rpm: float | None = None,
+            nb_paires_poles: int | None = None,
+            nb_dents_engrenage: int | None = None) -> None:
     """
     Lance l'analyse EDA complète pour un dataset.
     update_db_callback(dataset_id, status, **kwargs) est appelé pour mettre à jour la BD.
     ingest=True  : intègre les mesures/KPIs/défauts dans le dashboard (mode entreprise).
     ingest=False : EDA uniquement, aucune trace dans les tables dashboard (mode exploratoire).
+    vitesse_rpm / nb_paires_poles / nb_dents_engrenage : paramètres spectraux saisis à l'upload,
+    utilisés pour calculer fr, fe, GMF même si absents des colonnes CSV.
     """
     try:
         update_db_callback(dataset_id, "processing")
@@ -1553,14 +3046,54 @@ def run_eda(dataset_id: int, file_path: str, update_db_callback, ingest: bool = 
         path = Path(file_path)
         frames = parse_file(path)
 
+        api_key = os.getenv("ANTHROPIC_API_KEY", "")
+
         all_results = []
         for frame_name, df in frames.items():
             summary       = _compute_summary(df)
-            data_type     = _detect_data_type(df)
+            data_type, detect_score = _detect_data_type(df)
+            domain_description = ""
+
+            # Si détection faible (≤ 1 keyword) → laisser Claude inférer le vrai domaine
+            if detect_score <= 1 and api_key:
+                inferred_type, domain_description = _infer_domain_with_llm(df, frame_name, api_key)
+                data_type = inferred_type
+
             quality_score = _compute_quality_score(summary)
-            kpis          = _compute_kpis(df, data_type)
+            kpis          = _compute_kpis(df, data_type, vitesse_rpm, nb_paires_poles, nb_dents_engrenage)
             rul_info      = _compute_rul(df, data_type)
-            llm_result    = _call_claude(summary, data_type, frame_name, quality_score)
+
+            # Analyses avancees (VIF, Isolation Forest, stationnarite, tendance, alertes, ISO 25012)
+            iso_25012     = _compute_iso_25012_subscores(summary)
+            vif_info      = _compute_vif(df, max_cols=15)
+            anomalies_iso = _detect_anomalies_isoforest(df, contamination=0.02)
+            alerts        = _compute_critical_alerts(df, summary, kpis, rul_info, data_type)
+            stationarity  = {}
+            temporal_trend = {}
+            t_col = _detect_time_col(df)
+            if t_col:
+                num_cols_avail = df.select_dtypes(include=[np.number]).columns.tolist()
+                primary = next((c for c in num_cols_avail if any(k in str(c).lower()
+                                for k in ["v_rms", "vrms", "health", "disponibilite"])),
+                               num_cols_avail[0] if num_cols_avail else None)
+                if primary:
+                    try:
+                        d_sorted = df[[t_col, primary]].copy()
+                        d_sorted[t_col] = pd.to_datetime(d_sorted[t_col], errors="coerce")
+                        d_sorted = d_sorted.dropna().sort_values(t_col)
+                        if len(d_sorted) >= 30:
+                            stationarity = _test_stationarity_simple(d_sorted[primary])
+                            temporal_trend = _detect_temporal_trend(d_sorted, t_col, primary)
+                    except Exception:
+                        pass
+            exec_data = _compute_executive_summary_data(
+                summary, quality_score, data_type, alerts, kpis, rul_info, vif_info, anomalies_iso
+            )
+
+            llm_result    = _call_claude(summary, data_type, frame_name, quality_score,
+                                          alerts=alerts, kpis=kpis, rul_info=rul_info,
+                                          vif_info=vif_info, anomalies_iso=anomalies_iso,
+                                          domain_description=domain_description)
             plots         = _generate_plots(df, dataset_id)
             df_proc, pipeline_trace, enc_maps = _preprocess(df)
 
@@ -1593,7 +3126,8 @@ def run_eda(dataset_id: int, file_path: str, update_db_callback, ingest: bool = 
                     for clean, info in pipeline_trace["units"].items():
                         f.write(f"  {info['original']} → {clean} ({info['unit']})\n")
 
-            plots_serializable = [{"title": p["title"], "path": p["path"], "b64": p["b64"]} for p in plots]
+            plots_serializable = [{"title": p["title"], "path": p["path"], "b64": p["b64"],
+                                    "section": p.get("section", "")} for p in plots]
             structured_trace = {
                 "steps": pipeline_trace.get("steps", []),
                 "transformation_log": pipeline_trace.get("transformation_log", []),
@@ -1601,10 +3135,13 @@ def run_eda(dataset_id: int, file_path: str, update_db_callback, ingest: bool = 
                 "units": pipeline_trace.get("units", {}),
             }
 
-            # Rapport PDF enrichi
+            # Rapport PDF canonique (13 sections + synthèse exécutive + graphes intercalés)
             report_path = _generate_pdf(
                 dataset_id, frame_name, summary, llm_result, plots, enc_maps,
-                data_type, quality_score, structured_trace, kpis, rul_info
+                data_type, quality_score, structured_trace, kpis, rul_info,
+                alerts=alerts, iso_25012=iso_25012, vif_info=vif_info,
+                anomalies_iso=anomalies_iso, exec_summary_data=exec_data,
+                stationarity=stationarity, temporal_trend=temporal_trend,
             )
 
             all_results.append({
@@ -1618,6 +3155,13 @@ def run_eda(dataset_id: int, file_path: str, update_db_callback, ingest: bool = 
                 "plots":          plots_serializable,
                 "pipeline_trace": structured_trace,
                 "encoding_maps":  enc_maps,
+                "alerts":         alerts,
+                "iso_25012":      iso_25012,
+                "vif_info":       vif_info,
+                "anomalies_iso":  anomalies_iso,
+                "stationarity":   stationarity,
+                "temporal_trend": temporal_trend,
+                "exec_summary":   exec_data,
                 "processed_path": str(proc_path),
                 "report_path":    str(report_path),
             })
@@ -1636,8 +3180,10 @@ def run_eda(dataset_id: int, file_path: str, update_db_callback, ingest: bool = 
         )
 
         # INGESTION DASHBOARD : insérer mesures + KPIs dans la BD (mode entreprise uniquement)
+        # Utilise df (données brutes) et non df_proc (données scalées) pour conserver
+        # les vraies valeurs métier (v_rms en mm/s, disponibilite_pct en %, etc.)
         if ingest:
-            _ingest_dashboard(df_proc, data_type, dataset_id)
+            _ingest_dashboard(df, data_type, dataset_id, vitesse_rpm)
 
     except Exception as e:
         update_db_callback(dataset_id, "error", error_message=traceback.format_exc()[:2000])

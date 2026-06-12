@@ -1,18 +1,17 @@
 // src/pages/Donnees/components/DocumentationPage.tsx
 // Documentation intégrée — pipeline, indicateurs, formules, normes, seuils utilisés.
-// Inspirée du logiciel OneProd XPR (ACOEM) et du guide ISO 13374.
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
-  BookOpen, Activity, Calculator, Cpu, Database, FileText, Filter, Gauge,
-  GitBranch, Info, Layers, Lightbulb, Shield, Target, Workflow, Zap,
-  CheckCircle2, AlertTriangle, Settings, BarChart3, ChevronRight, ChevronDown
+  BookOpen, Activity, Calculator, Database, Filter, Gauge,
+  GitBranch, Info, Layers, Shield, Workflow,
+  CheckCircle2, AlertTriangle, BarChart3, ChevronRight
 } from 'lucide-react';
 
 /* ─── Sommaire ───────────────────────────────────────────── */
 type SectionId =
   | 'overview' | 'workflow' | 'pipeline-eda' | 'indicators-vib' | 'bearing-freqs'
-  | 'iso-10816' | 'defect-detection' | 'quality-score' | 'oneprod-inspiration'
+  | 'iso-10816' | 'defect-detection' | 'quality-score'
   | 'glossary' | 'limits';
 
 interface SectionDef {
@@ -30,7 +29,6 @@ const SECTIONS: SectionDef[] = [
   { id: 'iso-10816',          label: 'Norme ISO 10816 / 20816',          icon: Gauge       },
   { id: 'defect-detection',   label: 'Détection automatique de défauts', icon: AlertTriangle },
   { id: 'quality-score',      label: 'Score de qualité dataset',         icon: Shield      },
-  { id: 'oneprod-inspiration',label: 'Inspirations OneProd XPR',         icon: Lightbulb   },
   { id: 'glossary',           label: 'Glossaire',                        icon: BookOpen    },
   { id: 'limits',             label: 'Limites du système',               icon: Filter      },
 ];
@@ -126,8 +124,8 @@ const DocumentationPage: React.FC = () => {
           <h1 className="doc-h1"><Info size={20} /> Vue d'ensemble</h1>
           <p className="doc-lead">
             <strong>AI Maintenance</strong> est une application de maintenance prédictive et d'analyse vibratoire
-            pour les machines tournantes industrielles d'<strong>Atlas Industries Maroc</strong>. Elle s'inspire des
-            principes du logiciel <em>OneProd XPR</em> (ACOEM) tout en s'adaptant à un usage <strong>offline,
+            pour les machines tournantes industrielles d'<strong>Atlas Industries Maroc</strong>. Elle s'appuie sur les
+            normes internationales (ISO 10816, ISO 13374, ISO 18436) et fonctionne en mode <strong>offline,
             basé sur l'upload de fichiers</strong>.
           </p>
 
@@ -174,8 +172,9 @@ const DocumentationPage: React.FC = () => {
         >
           <h1 className="doc-h1"><Workflow size={20} /> Démarche normative ISO 13374</h1>
           <p>
-            Le flux de surveillance et de diagnostic suit la norme <strong>ISO 13374</strong>, identique à celle
-            utilisée par OneProd XPR. Le pipeline est structuré en <strong>4 étapes successives</strong> :
+            Le flux de surveillance et de diagnostic suit la norme <strong>ISO 13374</strong>, référence
+            internationale en surveillance d'état des machines. Le pipeline est structuré en
+            <strong> 4 étapes successives</strong> :
           </p>
 
           <div className="doc-workflow-steps">
@@ -454,7 +453,7 @@ const DocumentationPage: React.FC = () => {
           <Note type="info">
             <strong>Calculateur intégré disponible</strong> dans la sous-page <em>Analyse vibratoire</em>.
             Saisissez la géométrie du roulement ou choisissez une référence (6205, 6306, 22218…) dans le
-            mini-catalogue Rouldiag pour obtenir les fréquences automatiquement.
+            mini-catalogue de roulements pour obtenir les fréquences automatiquement.
           </Note>
 
           <h2 className="doc-h2">Exemple numérique — Roulement SKF 6205 à 1500 rpm</h2>
@@ -566,9 +565,9 @@ const DocumentationPage: React.FC = () => {
         >
           <h1 className="doc-h1"><AlertTriangle size={20} /> Détection automatique de défauts</h1>
           <p>
-            L'application implémente une <strong>grille de détection de défauts</strong> inspirée du module
-            "Defect Detection Grid" de OneProd XPR. Pour chaque machine, les indicateurs sont comparés à des
-            seuils pré-définis qui déclenchent l'affichage d'un défaut probable.
+            L'application implémente une <strong>grille de détection de défauts</strong> sous forme de matrice
+            machines × types de défauts. Pour chaque machine, les indicateurs sont comparés à des seuils
+            pré-définis qui déclenchent l'affichage d'un défaut probable.
           </p>
 
           <h2 className="doc-h2">Seuils utilisés dans l'application</h2>
@@ -728,89 +727,6 @@ const DocumentationPage: React.FC = () => {
           </Formula>
         </section>
 
-        {/* ───────────── INSPIRATIONS ONEPROD ───────────── */}
-        <section
-          ref={el => { sectionRefs.current['oneprod-inspiration'] = el; }}
-          className="doc-section"
-          id="oneprod-inspiration"
-        >
-          <h1 className="doc-h1"><Lightbulb size={20} /> Inspirations OneProd XPR</h1>
-          <p>
-            <strong>OneProd XPR</strong> (édité par ACOEM, anciennement 01dB-Metravib) est un logiciel de référence
-            en analyse vibratoire industrielle, utilisé notamment dans le secteur nucléaire français. Plusieurs
-            modules de notre application reprennent ses concepts éprouvés.
-          </p>
-
-          <table className="doc-table">
-            <thead>
-              <tr><th>Module OneProd XPR</th><th>Implémentation dans AI Maintenance</th></tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><strong>Defect Detection Grid</strong> — matrice points × défauts colorée</td>
-                <td>
-                  Page <em>Analyse vibratoire</em> → tableau des défauts détectés par machine, avec niveaux
-                  de sévérité (vert/jaune/orange/rouge) et confiance estimée.
-                </td>
-              </tr>
-              <tr>
-                <td><strong>Rouldiag</strong> — base de 40 000 références de roulements</td>
-                <td>
-                  Calculateur de fréquences avec mini-catalogue intégré (SKF 6205, 6206, 6306, 22218…).
-                </td>
-              </tr>
-              <tr>
-                <td><strong>vib-Graph</strong> — visualisation FFT / tendance / cascade</td>
-                <td>
-                  Spectres FFT avec overlays BPFO/BPFI/BSF, courbes de tendance V-RMS avec seuils ISO
-                  superposés.
-                </td>
-              </tr>
-              <tr>
-                <td><strong>Avis ISO synthétique</strong> — Bon / Acceptable / Non admissible</td>
-                <td>
-                  Bannière de classification ISO 10816 par machine et globale.
-                </td>
-              </tr>
-              <tr>
-                <td><strong>Mode Exploitation</strong> — historique / VEP / VES</td>
-                <td>
-                  KPIs vibratoires + tableau roulements + tendance + spectre groupés sur une seule vue.
-                </td>
-              </tr>
-              <tr>
-                <td><strong>Diagnostic workflow</strong> (4 étapes ISO 13374)</td>
-                <td>
-                  Pipeline : Upload → EDA agent → Analyse → Recommandations IA Claude + rapport PDF.
-                </td>
-              </tr>
-              <tr>
-                <td><strong>Reporting multi-format</strong> (PDF / RTF / Excel)</td>
-                <td>
-                  Rapport PDF généré (fpdf2), CSV propre exportable, base SQLite consultable.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <h2 className="doc-h2">Différences principales</h2>
-          <Note type="warn">
-            <strong>OneProd XPR</strong> est un logiciel de surveillance <em>online</em> avec acquisition continue
-            via collecteurs MVP/MVX/EAGLE. <strong>AI Maintenance</strong> est une application <em>offline,
-            basée sur upload</em> de fichiers — elle ne dialogue pas avec des capteurs en temps réel.
-          </Note>
-
-          <ul className="doc-bullet">
-            <li><strong>Pas d'acquisition online</strong> : pas de connexion MVX/EAGLE/MVP — uniquement upload.</li>
-            <li><strong>Pas d'OPC</strong> : pas de communication SCADA/DCS/GMAO en direct.</li>
-            <li><strong>Pas de spectre phasé</strong> : pas de top tour synchronisé en l'absence de capteur dédié.</li>
-            <li><strong>Couverture défauts plus restreinte</strong> : focus sur balourd, désalignement, roulements,
-              kurtosis. Pas de cascade waterfall 3D, pas d'orbite dynamique pour paliers lisses.</li>
-            <li><strong>Avantage : intégration IA</strong> — Claude Sonnet 4.6 génère les recommandations
-              narratives et les plans de prétraitement, là où XPR repose sur l'expertise utilisateur.</li>
-          </ul>
-        </section>
-
         {/* ───────────── GLOSSAIRE ───────────── */}
         <section
           ref={el => { sectionRefs.current['glossary'] = el; }}
@@ -832,11 +748,9 @@ const DocumentationPage: React.FC = () => {
               <tr><td><strong>ISO 18436</strong></td><td>Norme de qualification des analystes vibration et formules de calcul des fréquences caractéristiques de roulement.</td></tr>
               <tr><td><strong>RMS</strong></td><td><em>Root Mean Square</em> — Valeur efficace, racine carrée de la moyenne des carrés.</td></tr>
               <tr><td><strong>RobustScaler</strong></td><td>Normalisation robuste : (x − médiane) / IQR, insensible aux outliers.</td></tr>
-              <tr><td><strong>Rouldiag</strong></td><td>Base de données de roulements OneProd avec calcul automatique des fréquences caractéristiques.</td></tr>
               <tr><td><strong>RUL</strong></td><td><em>Remaining Useful Life</em> — Durée de vie résiduelle estimée d'un équipement.</td></tr>
               <tr><td><strong>StandardScaler</strong></td><td>Normalisation classique : (x − μ) / σ, sensible aux outliers.</td></tr>
               <tr><td><strong>V-RMS</strong></td><td>Vitesse efficace de vibration en mm/s, indicateur de référence ISO 10816.</td></tr>
-              <tr><td><strong>vib-Graph</strong></td><td>Module graphique d'OneProd XPR pour la visualisation des spectres et tendances.</td></tr>
             </tbody>
           </table>
         </section>
@@ -895,7 +809,7 @@ const DocumentationPage: React.FC = () => {
             <em>Documentation AI Maintenance — Atlas Industries Maroc — Mai 2026</em>
           </p>
           <p>
-            Inspirée de : ACOEM/OneProd XPR-300, vib-Graph DOC3102, ISO 10816, ISO 13374, ISO 18436-3.
+            Références normatives : ISO 10816, ISO 13374, ISO 18436-3.
           </p>
         </footer>
       </main>

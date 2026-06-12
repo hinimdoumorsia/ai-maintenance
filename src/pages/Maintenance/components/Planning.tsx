@@ -53,7 +53,7 @@ const Planning: React.FC<PlanningProps> = ({ data, loading }) => {
           <CalendarCheck size={15} style={{ color: "#3b82f6" }} />
           Planning des interventions à venir
         </div>
-        <span style={{ fontSize: 11, color: "#9ca3af" }}>
+        <span style={{ fontSize: 11, color: "var(--theme-text-faint)" }}>
           {data.length} BT planifié{data.length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -87,22 +87,21 @@ const Planning: React.FC<PlanningProps> = ({ data, loading }) => {
             <div>
               <div className="maint-bt-machine">
                 {bt.nom_machine ?? "—"}
-                <span style={{ fontFamily: "monospace", fontSize: 10, color: "#9ca3af", marginLeft: 6 }}>
+                <span style={{ fontFamily: "monospace", fontSize: 10, color: "var(--theme-text-faint)", marginLeft: 6 }}>
                   #{bt.numero_bt}
                 </span>
               </div>
               <div className="maint-bt-type">{bt.titre}</div>
             </div>
 
-            <span style={{ fontSize: 11, color: "#374151" }}>{bt.type_intervention}</span>
+            <span style={{ fontSize: 11, color: "var(--theme-text)" }}>{bt.type_intervention}</span>
 
             <span className={`maint-prio p${bt.priorite}`}>P{bt.priorite}</span>
 
             <span className={`maint-status ${bt.statut}`}>{statusLabel(bt.statut)}</span>
 
-            {/* ← MODIFIÉ : bt.prenom_nom_technicien → bt.technicien */}
-            <span style={{ fontSize: 11, color: "#6b7280" }}>
-              {bt.technicien ?? "Non assigné"}
+            <span style={{ fontSize: 11, color: "var(--theme-text-muted)" }}>
+              {bt.prenom_nom_technicien ?? "Non assigné"}
             </span>
           </div>
         );

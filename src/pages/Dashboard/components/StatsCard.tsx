@@ -21,7 +21,7 @@ const StatsCard: React.FC<StatsCardProps> = ({ stat, icon }) => {
       </div>
       <div className="stat-value">
         {stat.value}
-        {stat.unit && <span style={{ fontSize: 14, fontWeight: 500, color: "#6b7280", marginLeft: 3 }}>{stat.unit}</span>}
+        {stat.unit && <span style={{ fontSize: 14, fontWeight: 500, color: "var(--theme-text-muted)", marginLeft: 3 }}>{stat.unit}</span>}
       </div>
       <div className="stat-label">{stat.label}</div>
       {stat.trend !== undefined && (

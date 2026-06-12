@@ -1,6 +1,6 @@
 // src/pages/Parametres/components/EntrepriseForm.tsx
 import React, { useState, useRef, useEffect } from 'react';
-import { Building2, Upload, Save, CheckCircle, X } from 'lucide-react';
+import { Building2, Upload, Save, CheckCircle, X, FileText } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 
 const API = 'http://localhost:8000';
@@ -24,9 +24,14 @@ interface EntrepriseData {
   telephone: string;
   email: string;
   adresse: string;
+  ville: string;
+  pays: string;
+  codePostal: string;
+  productionPrincipale: string;
   domaineIndustriel: string;
   descriptif: string;
   descriptifDocumentName: string;
+  descriptifDocument: string | null;
   logo: string | null;
   logoName: string;
   siteWeb: string;
@@ -37,9 +42,14 @@ const DEFAULT: EntrepriseData = {
   telephone: '',
   email: '',
   adresse: '',
+  ville: '',
+  pays: 'Maroc',
+  codePostal: '',
+  productionPrincipale: '',
   domaineIndustriel: '',
   descriptif: '',
   descriptifDocumentName: '',
+  descriptifDocument: null,
   logo: null,
   logoName: '',
   siteWeb: '',
@@ -55,7 +65,7 @@ const EntrepriseForm: React.FC = () => {
 
   useEffect(() => {
     if (!user) return;
-    
+
     fetch(`${API}/api/admin/entreprise?user_id=${user.id}`)
       .then(res => res.json())
       .then(resData => {
@@ -65,11 +75,16 @@ const EntrepriseForm: React.FC = () => {
             telephone: resData.contact_telephone || '',
             email: resData.contact_email || '',
             adresse: resData.adresse_usine || '',
+            ville: resData.ville || '',
+            pays: resData.pays || 'Maroc',
+            codePostal: resData.code_postal || '',
+            productionPrincipale: resData.production_principale || '',
             domaineIndustriel: resData.domaine_industriel || '',
             descriptif: resData.descriptif_activite || '',
-            descriptifDocumentName: '',
-            logo: null,
-            logoName: '',
+            descriptifDocument: resData.document_descriptif_url || null,
+            descriptifDocumentName: resData.document_descriptif_url ? 'document-descriptif' : '',
+            logo: resData.logo_url || null,
+            logoName: resData.logo_url ? 'logo-entreprise' : '',
             siteWeb: resData.site_web || '',
           });
         }
@@ -94,7 +109,11 @@ const EntrepriseForm: React.FC = () => {
 
   const handleDocChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) set('descriptifDocumentName', file.name);
+    if (!file) return;
+    set('descriptifDocumentName', file.name);
+    const reader = new FileReader();
+    reader.onload = ev => set('descriptifDocument', ev.target?.result as string);
+    reader.readAsDataURL(file);
   };
 
   const handleSave = async () => {
@@ -105,12 +124,17 @@ const EntrepriseForm: React.FC = () => {
         contact_telephone: data.telephone,
         contact_email: data.email,
         adresse_usine: data.adresse,
+        ville: data.ville,
+        pays: data.pays,
+        code_postal: data.codePostal,
         domaine_industriel: data.domaineIndustriel,
         descriptif_activite: data.descriptif,
-        production_principale: '',
-        site_web: data.siteWeb
+        production_principale: data.productionPrincipale,
+        site_web: data.siteWeb,
+        logo_url: data.logo || null,
+        document_descriptif_url: data.descriptifDocument || null,
       };
-      
+
       const res = await fetch(`${API}/api/admin/entreprise?user_id=${user.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -162,6 +186,7 @@ const EntrepriseForm: React.FC = () => {
           </div>
           <div className="logo-upload-info">
             <button
+              type="button"
               className="param-btn-secondary"
               onClick={() => logoRef.current?.click()}
             >
@@ -171,8 +196,9 @@ const EntrepriseForm: React.FC = () => {
             <p>PNG, JPG, SVG — max 2 Mo</p>
             {data.logo && (
               <button
+                type="button"
                 style={{ fontSize: 11, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
-                onClick={() => { set('logo', null); set('logoName', ''); }}
+                onClick={() => { set('logo', null); set('logoName', ''); if (logoRef.current) logoRef.current.value = ''; }}
               >
                 Supprimer le logo
               </button>
@@ -220,9 +246,49 @@ const EntrepriseForm: React.FC = () => {
           <label className="param-label">Adresse de l'usine</label>
           <input
             className="param-input"
-            placeholder="Zone industrielle, Ville, Pays"
+            placeholder="Zone industrielle, rue..."
             value={data.adresse}
             onChange={e => set('adresse', e.target.value)}
+          />
+        </div>
+
+        <div className="param-field">
+          <label className="param-label">Ville</label>
+          <input
+            className="param-input"
+            placeholder="Ex : Casablanca"
+            value={data.ville}
+            onChange={e => set('ville', e.target.value)}
+          />
+        </div>
+
+        <div className="param-field">
+          <label className="param-label">Pays</label>
+          <input
+            className="param-input"
+            placeholder="Ex : Maroc"
+            value={data.pays}
+            onChange={e => set('pays', e.target.value)}
+          />
+        </div>
+
+        <div className="param-field">
+          <label className="param-label">Code postal</label>
+          <input
+            className="param-input"
+            placeholder="Ex : 20000"
+            value={data.codePostal}
+            onChange={e => set('codePostal', e.target.value)}
+          />
+        </div>
+
+        <div className="param-field">
+          <label className="param-label">Production principale</label>
+          <input
+            className="param-input"
+            placeholder="Ex : Phosphates, Ciment, Huile..."
+            value={data.productionPrincipale}
+            onChange={e => set('productionPrincipale', e.target.value)}
           />
         </div>
 
@@ -252,7 +318,7 @@ const EntrepriseForm: React.FC = () => {
         <div className="param-field param-field-full">
           <label className="param-label">
             Descriptif de l'usine
-            <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6 }}>
+            <span style={{ fontWeight: 400, color: 'var(--theme-text-faint)', marginLeft: 6 }}>
               (production, machines impliquées, procédés...)
             </span>
           </label>
@@ -268,7 +334,7 @@ const EntrepriseForm: React.FC = () => {
         <div className="param-field param-field-full">
           <label className="param-label">
             Document descriptif
-            <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6 }}>(optionnel)</span>
+            <span style={{ fontWeight: 400, color: 'var(--theme-text-faint)', marginLeft: 6 }}>(optionnel)</span>
           </label>
           <label className="file-upload-zone">
             <Upload size={16} color="#9ca3af" />
@@ -280,23 +346,44 @@ const EntrepriseForm: React.FC = () => {
             </div>
             {data.descriptifDocumentName && (
               <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 2, display: 'flex' }}
-                onClick={e => { e.preventDefault(); set('descriptifDocumentName', ''); }}
+                type="button"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--theme-text-faint)', padding: 2, display: 'flex' }}
+                onClick={e => {
+                  e.preventDefault();
+                  set('descriptifDocumentName', '');
+                  set('descriptifDocument', null);
+                  if (docRef.current) docRef.current.value = '';
+                }}
               >
                 <X size={14} />
               </button>
             )}
-            <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={handleDocChange} />
+            <input ref={docRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={handleDocChange} style={{ display: 'none' }} />
           </label>
+
+          {/* PDF viewer */}
+          {data.descriptifDocument && data.descriptifDocument.startsWith('data:application/pdf') && (
+            <div style={{ marginTop: 12, border: '1px solid var(--theme-border)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: 'var(--theme-bg-hover)', borderBottom: '1px solid var(--theme-border)', fontSize: 12, color: 'var(--theme-text-muted)' }}>
+                <FileText size={13} />
+                Aperçu du document — {data.descriptifDocumentName}
+              </div>
+              <iframe
+                src={data.descriptifDocument}
+                style={{ width: '100%', height: 520, border: 'none', display: 'block' }}
+                title="Document descriptif"
+              />
+            </div>
+          )}
         </div>
 
       </div>
 
       <div className="param-form-actions">
-        <button className="param-btn-secondary" onClick={() => setData(DEFAULT)}>
+        <button type="button" className="param-btn-secondary" onClick={() => setData(DEFAULT)}>
           Réinitialiser
         </button>
-        <button className="param-btn-primary" onClick={handleSave}>
+        <button type="button" className="param-btn-primary" onClick={handleSave}>
           <Save size={14} />
           Enregistrer
         </button>

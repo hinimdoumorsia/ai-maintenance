@@ -103,8 +103,9 @@ def complete_onboarding(req: OnboardingReq):
             """INSERT INTO entreprise (
                 nom_entreprise, contact_telephone, contact_email,
                 adresse_usine, ville, pays, code_postal,
-                domaine_industriel, descriptif_activite, production_principale, site_web
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                domaine_industriel, descriptif_activite, production_principale, site_web,
+                logo_url, document_descriptif_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 ent.get("nom", ""),
                 ent.get("telephone", ""),
@@ -117,6 +118,8 @@ def complete_onboarding(req: OnboardingReq):
                 ent.get("descriptif", ""),
                 ent.get("production", ""),
                 ent.get("site_web", ""),
+                ent.get("logo_base64", "") or None,
+                ent.get("document_base64", "") or None,
             )
         )
         ent_id = cur.lastrowid
@@ -177,3 +180,99 @@ def complete_onboarding(req: OnboardingReq):
 
         conn.commit()
         return {"success": True, "entreprise_id": ent_id}
+
+
+# ── Profile ───────────────────────────────────────────────────────────────────
+
+class ProfileUpdateReq(BaseModel):
+    user_id: int
+    nom: str | None = None
+    prenom: str | None = None
+    email: str | None = None
+    telephone: str | None = None
+    poste: str | None = None
+    date_embauche: str | None = None
+
+
+@router.get("/profile")
+def get_profile(user_id: int):
+    """Retourne le profil complet d'un utilisateur."""
+    with db_session() as conn:
+        row = conn.execute(
+            """SELECT u.id_utilisateur, u.nom, u.prenom, u.email, u.role,
+                      u.telephone, u.service, u.statut, u.date_embauche,
+                      u.id_entreprise,
+                      e.nom_entreprise
+               FROM utilisateur u
+               LEFT JOIN entreprise e ON u.id_entreprise = e.id_entreprise
+               WHERE u.id_utilisateur = ?""",
+            (user_id,)
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    d = dict(row)
+    return {
+        "id": d["id_utilisateur"],
+        "nom": d["nom"],
+        "prenom": d["prenom"],
+        "email": d["email"],
+        "role": d["role"],
+        "telephone": d.get("telephone"),
+        "poste": d.get("service") if d.get("service") and not (d.get("service") or "").startswith("sha256:") else None,
+        "statut": d.get("statut"),
+        "date_embauche": d.get("date_embauche"),
+        "id_entreprise": d.get("id_entreprise"),
+        "nom_entreprise": d.get("nom_entreprise"),
+    }
+
+
+@router.put("/profile")
+def update_profile(req: ProfileUpdateReq):
+    """Met à jour le profil d'un utilisateur."""
+    with db_session() as conn:
+        # Vérifier que l'utilisateur existe
+        existing = conn.execute(
+            "SELECT id_utilisateur FROM utilisateur WHERE id_utilisateur = ?",
+            (req.user_id,)
+        ).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
+        updates = []
+        params = []
+        if req.nom is not None:
+            updates.append("nom = ?")
+            params.append(req.nom.strip())
+        if req.prenom is not None:
+            updates.append("prenom = ?")
+            params.append(req.prenom.strip())
+        if req.email is not None:
+            # Vérifier unicité email
+            dup = conn.execute(
+                "SELECT id_utilisateur FROM utilisateur WHERE email = ? AND id_utilisateur != ?",
+                (req.email.strip().lower(), req.user_id)
+            ).fetchone()
+            if dup:
+                raise HTTPException(status_code=400, detail="Cet email est déjà utilisé")
+            updates.append("email = ?")
+            params.append(req.email.strip().lower())
+        if req.telephone is not None:
+            updates.append("telephone = ?")
+            params.append(req.telephone.strip())
+        if req.poste is not None:
+            updates.append("service = ?")
+            params.append(req.poste.strip())
+        if req.date_embauche is not None:
+            updates.append("date_embauche = ?")
+            params.append(req.date_embauche or None)
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="Aucun champ à mettre à jour")
+
+        params.append(req.user_id)
+        sql = f"UPDATE utilisateur SET {', '.join(updates)} WHERE id_utilisateur = ?"
+        conn.execute(sql, params)
+        conn.commit()
+
+    # Retourne le profil mis à jour
+    return get_profile(req.user_id)

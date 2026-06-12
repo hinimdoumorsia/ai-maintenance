@@ -5,7 +5,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   BatteryLow,
-  CheckCircle2,
   Loader2,
   Thermometer,
   Waves,
@@ -29,6 +28,21 @@ interface Capteur {
   freq_acq: string;
   nb_mesures_24h: number;
 }
+
+const STATUT_LABELS: Record<string, string> = {
+  actif: 'Actif',
+  inactif: 'Inactif',
+  batterie_faible: 'Batterie faible',
+  en_panne: 'En panne',
+};
+
+const TYPE_NORM: Record<string, string> = {
+  accelerometre: 'Accéléromètre',
+  velocimetre: 'Vélocimètre',
+  thermique: 'Température',
+  courant: 'Courant',
+  pression: 'Pression',
+};
 
 const TYPE_ICONS: Record<string, React.ElementType> = {
   Accéléromètre: Waves,
@@ -165,24 +179,20 @@ const CapteurIoT: React.FC = () => {
   const [filterType, setFilterType] = useState('Tous');
   const [filterStatut, setFilterStatut] = useState('Tous');
 
-  const mockCapteurs: Capteur[] = [
-    { id: 'C001', machine_id: 'M001', machine_nom: 'Compresseur Atlas C-1', type: 'Accéléromètre', position: 'Roulement 1', statut: 'Actif', batterie: 85, derniere_mesure: '2026-05-05 10:30', freq_acq: '10 kHz', nb_mesures_24h: 1440 },
-    { id: 'C002', machine_id: 'M001', machine_nom: 'Compresseur Atlas C-1', type: 'Vélocimètre', position: 'Sortie arbre', statut: 'Actif', batterie: 72, derniere_mesure: '2026-05-05 10:30', freq_acq: '5 kHz', nb_mesures_24h: 720 },
-    { id: 'C003', machine_id: 'M002', machine_nom: 'Pompe P-12', type: 'Température', position: 'Carter', statut: 'Batterie faible', batterie: 15, derniere_mesure: '2026-05-04 08:15', freq_acq: '1 Hz', nb_mesures_24h: 86400 },
-    { id: 'C004', machine_id: 'M003', machine_nom: 'Moteur ME-45', type: 'Courant', position: 'Phase A', statut: 'Actif', batterie: null, derniere_mesure: '2026-05-05 11:00', freq_acq: '50 Hz', nb_mesures_24h: 4320000 },
-    { id: 'C005', machine_id: 'M001', machine_nom: 'Compresseur Atlas C-1', type: 'Pression', position: 'Sortie', statut: 'En panne', batterie: 5, derniere_mesure: '2026-05-01 14:20', freq_acq: '10 Hz', nb_mesures_24h: 0 },
-    { id: 'C006', machine_id: 'M004', machine_nom: 'Ventilateur V-08', type: 'Accéléromètre', position: 'Roulement 2', statut: 'Inactif', batterie: 45, derniere_mesure: '2026-04-28 22:00', freq_acq: '10 kHz', nb_mesures_24h: 0 },
-    { id: 'C007', machine_id: 'M005', machine_nom: 'Réducteur R-22', type: 'Température', position: 'Huile', statut: 'Actif', batterie: 90, derniere_mesure: '2026-05-05 09:20', freq_acq: '1 Hz', nb_mesures_24h: 86400 },
-  ];
-
   useEffect(() => {
     setLoading(true);
     setDatasetLoadError(null);
     if (source === 'db') {
-      fetch(`${API}/api/donnees/parc/capteurs`)
-        .then(r => r.ok ? r.json() : mockCapteurs)
-        .then(d => setCapteurs(Array.isArray(d) ? d : d.capteurs || []))
-        .catch(() => setCapteurs(mockCapteurs))
+      const session = JSON.parse(localStorage.getItem('ai-maint-session') || '{}');
+      const userId = session.id;
+      if (!userId) { setLoading(false); return; }
+      fetch(`${API}/api/donnees/parc/capteurs?user_id=${userId}`)
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(d => {
+          const raw: any[] = Array.isArray(d) ? d : d.capteurs || [];
+          setCapteurs(raw.map(c => ({ ...c, freq_acq: _formatAcquisitionFreq(c.freq_acq) })));
+        })
+        .catch(() => setCapteurs([]))
         .finally(() => setLoading(false));
       return;
     }
@@ -213,7 +223,7 @@ const CapteurIoT: React.FC = () => {
   }, [source, selectedId, isCompatible]);
 
   const types = ['Tous', ...new Set(capteurs.map(c => c.type))];
-  const statuts = ['Tous', 'Actif', 'Inactif', 'Batterie faible', 'En panne'];
+  const statuts = ['Tous', ...new Set(capteurs.map(c => c.statut))];
 
   const filtered = capteurs
     .filter(c => filterType === 'Tous' || c.type === filterType)
@@ -221,9 +231,9 @@ const CapteurIoT: React.FC = () => {
 
   const stats = {
     total: capteurs.length,
-    actifs: capteurs.filter(c => c.statut === 'Actif').length,
+    actifs: capteurs.filter(c => c.statut === 'actif').length,
     batterieFaible: capteurs.filter(c => c.batterie !== null && c.batterie < 20).length,
-    panne: capteurs.filter(c => c.statut === 'En panne').length,
+    panne: capteurs.filter(c => c.statut === 'en_panne').length,
   };
 
   if (ctxLoading) return <div className="capteurs-page"><div className="eda-loading"><Loader2 size={20} className="spin" /> Chargement...</div></div>;
@@ -258,7 +268,7 @@ const CapteurIoT: React.FC = () => {
     );
   }
 
-  const getBatteryColor = (b: number | null) => b == null ? '#d1d5db' : b < 20 ? '#dc2626' : b <= 50 ? '#f97316' : '#16a34a';
+  const getBatteryColor = (b: number | null) => b == null ? 'var(--theme-border)' : b < 20 ? '#dc2626' : b <= 50 ? '#f97316' : '#16a34a';
 
   return (
     <div className="capteurs-page">
@@ -271,6 +281,13 @@ const CapteurIoT: React.FC = () => {
         </div>
       )}
 
+      {loading && (
+        <div className="eda-loading" style={{ padding: '20px 0' }}>
+          <Loader2 size={18} className="spin" /> Chargement des capteurs…
+        </div>
+      )}
+
+      {!loading && <>
       {/* Compteurs */}
       <div className="capteurs-stats">
         <div className="capteur-stat"><div className="capteur-stat-value">{stats.total}</div><div className="capteur-stat-label">Total capteurs</div></div>
@@ -282,27 +299,31 @@ const CapteurIoT: React.FC = () => {
       {/* Filtres */}
       <div className="parc-toolbar">
         <select value={filterType} onChange={e => setFilterType(e.target.value)}>
-          {types.map(t => <option key={t} value={t}>{t === 'Tous' ? 'Tous types' : t}</option>)}
+          {types.map(t => <option key={t} value={t}>{t === 'Tous' ? 'Tous types' : TYPE_NORM[t] || t}</option>)}
         </select>
         <select value={filterStatut} onChange={e => setFilterStatut(e.target.value)}>
-          {statuts.map(s => <option key={s} value={s}>{s === 'Tous' ? 'Tous statuts' : s}</option>)}
+          {statuts.map(s => <option key={s} value={s}>{s === 'Tous' ? 'Tous statuts' : STATUT_LABELS[s] || s}</option>)}
         </select>
       </div>
 
-      {/* Types de capteurs */}
+      {/* Types de capteurs — filtrés aux types présents dans les données réelles */}
       <div className="capteurs-types-grid">
-        {Object.entries(TYPE_DESC).map(([type, desc]) => {
-          const Icon = TYPE_ICONS[type] || Zap;
-          return (
-            <div key={type} className="capteur-type-card">
-              <Icon size={20} color="#f97316" />
-              <div>
-                <strong>{type}</strong>
-                <p>{desc}</p>
-              </div>
-            </div>
-          );
-        })}
+        {(() => {
+          const presentLabels = capteurs.length > 0
+            ? new Set(capteurs.map(c => TYPE_NORM[c.type] || c.type))
+            : new Set(Object.keys(TYPE_DESC));
+          return Object.entries(TYPE_DESC)
+            .filter(([type]) => presentLabels.has(type))
+            .map(([type, desc]) => {
+              const Icon = TYPE_ICONS[type] || Zap;
+              return (
+                <div key={type} className="capteur-type-card">
+                  <Icon size={20} color="#f97316" />
+                  <div><strong>{type}</strong><p>{desc}</p></div>
+                </div>
+              );
+            });
+        })()}
       </div>
 
       {/* Tableau */}
@@ -314,16 +335,25 @@ const CapteurIoT: React.FC = () => {
             </tr>
           </thead>
           <tbody>
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={9} style={{ textAlign: 'center', padding: '24px', color: 'var(--theme-text-faint)', fontSize: 13 }}>
+                  {capteurs.length === 0
+                    ? 'Aucun capteur enregistré pour cette entreprise.'
+                    : 'Aucun capteur ne correspond aux filtres sélectionnés.'}
+                </td>
+              </tr>
+            )}
             {filtered.map(c => {
               const bColor = getBatteryColor(c.batterie);
-              const statusColor = c.statut === 'Actif' ? '#16a34a' : c.statut === 'Batterie faible' ? '#f97316' : c.statut === 'En panne' ? '#dc2626' : '#9ca3af';
+              const statusColor = c.statut === 'actif' ? '#16a34a' : c.statut === 'batterie_faible' ? '#f97316' : c.statut === 'en_panne' ? '#dc2626' : 'var(--theme-text-faint)';
               return (
                 <tr key={c.id}>
                   <td className="parc-code">{c.id}</td>
                   <td>{c.machine_nom}</td>
-                  <td>{c.type}</td>
+                  <td>{TYPE_NORM[c.type] || c.type}</td>
                   <td>{c.position}</td>
-                  <td><span className="parc-zone-badge" style={{ background: statusColor, color: '#fff' }}>{c.statut}</span></td>
+                  <td><span className="parc-zone-badge" style={{ background: statusColor, color: statusColor === 'var(--theme-text-faint)' ? 'var(--theme-text)' : '#fff' }}>{STATUT_LABELS[c.statut] || c.statut}</span></td>
                   <td>
                     {c.batterie == null ? 'N/A' : (
                       <div className="battery-cell">
@@ -333,7 +363,7 @@ const CapteurIoT: React.FC = () => {
                       </div>
                     )}
                   </td>
-                  <td>{c.derniere_mesure}</td>
+                  <td>{c.derniere_mesure || '—'}</td>
                   <td>{c.freq_acq}</td>
                   <td>{c.nb_mesures_24h.toLocaleString()}</td>
                 </tr>
@@ -342,6 +372,7 @@ const CapteurIoT: React.FC = () => {
           </tbody>
         </table>
       </div>
+      </>}
     </div>
   );
 };

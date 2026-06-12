@@ -12,7 +12,64 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sentence_transformers import SentenceTransformer
 
+from services import chatbot_tools
+
 router = APIRouter()
+
+_MODEL = "claude-sonnet-4-6"
+_MAX_TOOL_ITERS = 6
+
+# Fiche de connaissance de l'application (autorité : description fonctionnelle, fiable).
+APP_OVERVIEW = (
+    "APPLICATION : « AI Maintenance » — plateforme web de maintenance prédictive industrielle "
+    "(analyse vibratoire des machines tournantes, monitoring IoT, prédiction IA).\n"
+    "PAGES PRINCIPALES :\n"
+    "- Dashboard : KPIs temps réel (disponibilité, économies, machines en alerte, taux de détection), "
+    "fleur des 9 piliers, machines à risque, alertes, graphes FFT/V-RMS.\n"
+    "- Données : upload de datasets (CSV/XLSX/TXT/ARFF/ZIP) puis EDA automatique (score qualité, "
+    "outliers IQR, scaling adaptatif, graphiques, rapport PDF, narration IA). Sous-pages : Vue Générale, "
+    "Analyse Vibratoire (ISO 10816/20816, défauts roulements BPFO/BPFI/BSF), Pronostic & DRBF, KPIs, "
+    "Parc Machines, Capteurs IoT, Classification VIS.\n"
+    "- Paramètres : profil utilisateur, infos entreprise, CRUD du parc machines + capteurs.\n"
+    "- Autres pages : Prédictions, Entraînement (ML), Modèles, Agents, Outils, Maintenance.\n"
+    "NORMES : ISO 10816, 20816, 18436, 13306 ; zones vibratoires A (bon) à D (danger).\n"
+    "DONNÉES : stockées en base SQLite (machines, capteurs, mesures, alertes, KPIs journaliers, "
+    "pronostics DRBF, défauts, bons de travail, pièces, datasets). Tu peux les consulter via les outils."
+)
+
+SYSTEM_PROMPT = (
+    "Tu es l'« Assistant Maintenance » intégré à l'application AI Maintenance. Tu réponds aux questions "
+    "techniques (maintenance, analyse vibratoire, normes ISO) ET aux questions sur les données réelles de "
+    "l'application et de l'entreprise de l'utilisateur.\n\n"
+    "OUTILS DISPONIBLES :\n"
+    "- search_documentation : recherche dans la documentation technique locale (normes ISO 10816/20816/"
+    "18436, manuels d'analyse vibratoire). À utiliser pour les questions normatives/techniques.\n"
+    "- get_company_profile, get_dashboard_kpis, get_kpi_indicators, list_machines, list_active_alerts, "
+    "list_sensors, list_datasets : données LIVE de la base de l'application (entreprise, parc, alertes, "
+    "capteurs, KPIs, datasets uploadés).\n"
+    "- query_table : lecture seule d'une table précise de la base pour des questions pointues.\n\n"
+    "RÈGLES :\n"
+    "1) Si la question porte sur les données de l'application/entreprise (machines, capteurs, mesures, "
+    "alertes, KPIs, datasets, maintenance…), APPELLE D'ABORD les outils de base de données. Ces données "
+    "sont LOCALES et FIABLES.\n"
+    "1bis) Pour TOUT indicateur de performance de l'entreprise — TRS/OEE, disponibilité, MTBF, MTTR, ROI… "
+    "— utilise get_kpi_indicators (ou get_dashboard_kpis). Ces valeurs sont celles AFFICHÉES sur le "
+    "tableau de bord. Ne calcule JAMAIS ces indicateurs à partir d'un dataset uploadé.\n"
+    "2) Pour les questions normatives/techniques (seuils ISO, fréquences de défaut…), appelle "
+    "search_documentation.\n"
+    "3) Tu peux décrire l'application elle-même à partir de la FICHE ci-dessous : c'est fiable.\n"
+    "4) N'ajoute le bandeau « ⚠️ Réponse non vérifiée localement » QUE si ta réponse repose sur des "
+    "connaissances générales SANS aucun appui d'un outil (ni base de données ni documentation). Si un "
+    "outil a fourni l'information, n'ajoute PAS ce bandeau.\n"
+    "5) Ne fabrique jamais de valeurs (seuils, fréquences, chiffres). Si l'info n'est ni en base ni dans "
+    "la doc, dis-le clairement.\n"
+    "6) Réponds dans la langue de la question, de façon concise et structurée. Quand tu utilises "
+    "search_documentation, cite les sources inline au format [Source: <doc> | p.<page>].\n"
+    "7) FORMAT DE RÉPONSE : n'utilise JAMAIS de tableaux Markdown (pas de « | » ni de séparateurs de "
+    "colonnes). Présente les données sous forme de listes à puces avec le libellé en gras "
+    "(ex. « - **Code** : POMPE-CENT »). N'utilise AUCUN emoji ni pictogramme. Reste sobre et factuel.\n\n"
+    "FICHE APPLICATION :\n" + APP_OVERVIEW
+)
 
 # Etat global charge au demarrage (init une seule fois)
 _rag_ready = False
@@ -43,6 +100,7 @@ class ChatRequest(BaseModel):
     conversation_history: list[ChatTurn] = Field(default_factory=list)
     filters: ChatFilters = Field(default_factory=ChatFilters)
     stream: bool = True
+    user_id: int | None = None
 
 
 def init_chatbot() -> None:
@@ -120,48 +178,20 @@ def _build_retrieval(message: str, theme_filter: str | None = None) -> tuple[lis
     return picked, theme_detected
 
 
-def _build_prompt(message: str, history: list[ChatTurn], chunks: list[dict[str, Any]]) -> tuple[str, str]:
-    has_context = len(chunks) > 0
-    system_prompt = (
-        "Tu es un assistant expert en maintenance industrielle, analyse vibratoire "
-        "et interpretation des normes ISO (10816/20816/18436/13374). "
-        "Regles obligatoires:\n"
-        "1) Priorite absolue au contexte documentaire fourni.\n"
-        "2) Si le contexte est insuffisant, tu peux repondre avec des connaissances generales "
-        "techniques, MAIS tu dois marquer explicitement la reponse comme NON VERIFIEE localement "
-        "et recommander une verification documentaire complementaire.\n"
-        "3) Pour chaque affirmation technique importante, ajoute une citation inline "
-        "au format [Source: <Document> | p.<page> | <section>] quand une source locale existe.\n"
-        "4) Ne fabrique jamais de valeurs seuils, classes machine, frequences de defaut "
-        "ou procedures sans indiquer clairement le niveau de confiance.\n"
-        "5) Reponds dans la langue de la question.\n"
-        "6) Si la question touche aux zones/seuils ISO, structure la reponse en: "
-        "Contexte, Interprétation, Action recommandée."
-    )
-    context_parts = []
+def _doc_chunks_to_tool_result(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Transforme les chunks RAG en payload léger renvoyé au LLM comme résultat d'outil."""
+    out = []
     for i, ch in enumerate(chunks, start=1):
         meta = ch["meta"]
-        context_parts.append(
-            f"[chunk {i}]\n"
-            f"source_doc: {meta.get('doc_title','?')}\n"
-            f"page: {meta.get('page_number','?')}\n"
-            f"section: {meta.get('heading_context','?')}\n"
-            f"relevance_score: {round(ch.get('score', 0.0), 3)}\n"
-            f"content:\n{ch['text']}"
-        )
-    trimmed_history = history[-6:]
-    hist_txt = "\n".join(f"{t.role}: {t.content}" for t in trimmed_history)
-    user_prompt = (
-        ("Contexte documentaire:\n\n" + "\n\n".join(context_parts) if has_context else "Contexte documentaire: (aucun contexte pertinent retrouve)\n")
-        + "\n\nHistorique de conversation:\n"
-        + (hist_txt or "(vide)")
-        + f"\n\nQuestion: {message}\n\n"
-        "Instruction de reponse: donne une reponse utile et concise. "
-        "Si la reponse n'est pas confirmee par la doc locale, ajoute en tete "
-        "'⚠️ Reponse non verifiee localement' et termine par des pistes de verification. "
-        "Ajoute ensuite une section 'Sources utilisees' (ou 'Sources locales indisponibles')."
-    )
-    return system_prompt, user_prompt
+        out.append({
+            "chunk": i,
+            "source_doc": meta.get("doc_title", "?"),
+            "page": meta.get("page_number", "?"),
+            "section": meta.get("heading_context", "?"),
+            "relevance": round(ch.get("score", 0.0), 3),
+            "content": ch["text"],
+        })
+    return out
 
 
 def _sources_from_chunks(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -218,40 +248,108 @@ def chatbot_themes():
     return {"themes": themes}
 
 
+def _all_tools() -> list[dict]:
+    """Outil de recherche documentaire + outils base de données."""
+    search_tool = {
+        "name": "search_documentation",
+        "description": (
+            "Recherche sémantique dans la documentation technique locale indexée "
+            "(normes ISO 10816/20816/18436, manuels d'analyse vibratoire, fréquences de défaut). "
+            "À utiliser pour toute question normative ou technique."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Requête de recherche documentaire."},
+                "theme": {"type": "string", "description": "Filtre thématique optionnel."},
+            },
+            "required": ["query"],
+        },
+    }
+    return [search_tool] + chatbot_tools.TOOL_DEFINITIONS_DB
+
+
+def _exec_tool(name: str, tool_input: dict, user_id: int | None, default_theme: str | None):
+    """Exécute un outil. Renvoie (résultat_json, chunks_doc) — chunks pour alimenter les sources UI."""
+    if name == "search_documentation":
+        query = tool_input.get("query") or ""
+        theme = tool_input.get("theme") or default_theme
+        chunks, _ = _build_retrieval(query, theme)
+        return _doc_chunks_to_tool_result(chunks), chunks
+    return chatbot_tools.dispatch_db_tool(name, tool_input, user_id), []
+
+
+def _initial_messages(req: ChatRequest) -> list[dict]:
+    """Reconstruit l'historique en messages Anthropic, garantit un premier message 'user'."""
+    msgs: list[dict] = []
+    for t in req.conversation_history[-6:]:
+        role = "assistant" if t.role == "assistant" else "user"
+        if not msgs and role != "user":
+            continue  # Anthropic exige que le 1er message soit 'user'
+        if (t.content or "").strip():
+            msgs.append({"role": role, "content": t.content})
+    msgs.append({"role": "user", "content": req.message})
+    return msgs
+
+
+def _run_agentic_loop(req: ChatRequest):
+    """Boucle tool-use (non-streaming en interne). Renvoie (texte_final, sources)."""
+    tools = _all_tools()
+    messages = _initial_messages(req)
+    doc_chunks: list[dict[str, Any]] = []
+    final_text = ""
+
+    for _ in range(_MAX_TOOL_ITERS):
+        resp = _anthropic.messages.create(
+            model=_MODEL,
+            max_tokens=1500,
+            system=SYSTEM_PROMPT,
+            tools=tools,
+            messages=messages,
+        )
+        if resp.stop_reason == "tool_use":
+            messages.append({"role": "assistant", "content": resp.content})
+            tool_results = []
+            for block in resp.content:
+                if getattr(block, "type", "") == "tool_use":
+                    result, chunks = _exec_tool(block.name, block.input or {}, req.user_id, req.filters.theme)
+                    doc_chunks.extend(chunks)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result, ensure_ascii=False, default=str),
+                    })
+            messages.append({"role": "user", "content": tool_results})
+            continue
+
+        final_text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        break
+    else:
+        final_text = (final_text or "").strip() or (
+            "Je n'ai pas pu finaliser la réponse (trop d'étapes d'outils). Reformulez la question."
+        )
+
+    return final_text, _sources_from_chunks(doc_chunks)
+
+
 @router.post("/chat")
 async def chat(req: ChatRequest):
     _ensure_ready()
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="Message vide.")
-
-    chunks, theme_detected = _build_retrieval(req.message, req.filters.theme)
-    sources = _sources_from_chunks(chunks)
-
     if _anthropic is None:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY manquant.")
 
-    system_prompt, user_prompt = _build_prompt(req.message, req.conversation_history, chunks)
+    answer, sources = _run_agentic_loop(req)
 
     if not req.stream:
-        msg = _anthropic.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-        answer = "".join(block.text for block in msg.content if getattr(block, "type", "") == "text")
-        return JSONResponse({"answer": answer, "sources": sources, "theme_detected": theme_detected})
+        return JSONResponse({"answer": answer, "sources": sources})
 
     async def event_stream():
-        with _anthropic.messages.stream(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        ) as stream:
-            for text in stream.text_stream:
-                yield f"data: {json.dumps({'type': 'token', 'token': text})}\n\n"
-
-        yield f"data: {json.dumps({'type': 'done', 'sources': sources, 'theme_detected': theme_detected})}\n\n"
+        # Découpe la réponse finale en petits morceaux pour conserver l'effet « machine à écrire ».
+        chunk_size = 24
+        for i in range(0, len(answer), chunk_size):
+            yield f"data: {json.dumps({'type': 'token', 'token': answer[i:i + chunk_size]})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'sources': sources})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

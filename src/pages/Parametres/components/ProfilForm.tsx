@@ -11,7 +11,6 @@ interface ProfilData {
   email: string;
   telephone: string;
   poste: string;
-  departement: string;
   dateEmbauche: string;
 }
 
@@ -21,7 +20,6 @@ const DEFAULT_PROFIL: ProfilData = {
   email: '',
   telephone: '',
   poste: '',
-  departement: '',
   dateEmbauche: '',
 };
 
@@ -45,7 +43,6 @@ const ProfilForm: React.FC = () => {
             email: profileData.email || user.email || '',
             telephone: profileData.telephone || '',
             poste: profileData.poste || 'Technicien maintenance',
-            departement: profileData.departement || 'Maintenance',
             dateEmbauche: profileData.date_embauche || '',
           });
         } else {
@@ -56,7 +53,6 @@ const ProfilForm: React.FC = () => {
             email: user.email || '',
             telephone: user.telephone || '',
             poste: 'Technicien maintenance',
-            departement: 'Maintenance',
             dateEmbauche: '',
           });
         }
@@ -78,7 +74,12 @@ const ProfilForm: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: user.id,
-          ...data
+          nom: data.nom,
+          prenom: data.prenom,
+          email: data.email,
+          telephone: data.telephone,
+          poste: data.poste,
+          date_embauche: data.dateEmbauche,
         })
       });
       
@@ -193,21 +194,6 @@ const ProfilForm: React.FC = () => {
             <option value="Responsable maintenance">Responsable maintenance</option>
             <option value="Directeur technique">Directeur technique</option>
             <option value="Chef de projet">Chef de projet</option>
-          </select>
-        </div>
-
-        <div className="param-field">
-          <label className="param-label">Département</label>
-          <select
-            className="param-select"
-            value={data.departement}
-            onChange={e => handleChange('departement', e.target.value)}
-          >
-            <option value="Maintenance">Maintenance</option>
-            <option value="Production">Production</option>
-            <option value="Qualité">Qualité</option>
-            <option value="R&D">R&D</option>
-            <option value="IT">IT</option>
           </select>
         </div>
 

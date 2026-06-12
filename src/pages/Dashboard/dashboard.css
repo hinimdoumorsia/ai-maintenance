@@ -674,6 +674,18 @@
   margin-bottom: 16px;
 }
 .dash-error strong { color: var(--danger); display: block; margin-bottom: 4px; }
+.alert-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  margin: 4px 0;
+}
 .dash-skeleton {
   background: linear-gradient(90deg,var(--bg-deep) 25%,var(--bg-card-hover) 50%,var(--bg-deep) 75%);
   background-size: 200% 100%;
@@ -689,13 +701,114 @@
 .d-svg-axis  { stroke: var(--border-bright); }
 .d-svg-bg    { fill: var(--bg-deep); }
 
+/* ── Urgency Banner ── */
+.urgency-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(239,68,68,.07);
+  border: 1px solid rgba(239,68,68,.28);
+  border-left: 4px solid var(--danger);
+  border-radius: 8px;
+  padding: 11px 18px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+[data-theme="dark"] .urgency-banner { background: rgba(255,71,87,.07); }
+.urgency-dot {
+  width: 8px; height: 8px;
+  background: var(--danger);
+  border-radius: 50%;
+  animation: dash-pulse 1.5s infinite;
+  flex-shrink: 0;
+}
+.urgency-machines {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-left: 4px;
+}
+.urgency-action {
+  margin-left: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--danger);
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+  border: 1px solid rgba(239,68,68,.3);
+  border-radius: 4px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+.urgency-action:hover { background: rgba(239,68,68,.1); }
+
+/* ── Centre layout 2 colonnes ── */
+.dash-center-grid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 16px;
+  margin-bottom: 24px;
+  align-items: start;
+}
+.dash-center-left  { display: flex; flex-direction: column; gap: 16px; }
+.dash-center-right { display: flex; flex-direction: column; gap: 16px; }
+
+/* Fleur dans la colonne droite — responsive */
+.dash-flower-card .flower-svg {
+  width: 100%;
+  height: auto;
+  max-width: 340px;
+  display: block;
+  margin: 8px auto 0;
+}
+
+/* ── Accordion KPI sections ── */
+.kpi-grid-secondary { margin-top: 10px; }
+.kpi-expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 7px 12px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--text-faint);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all .15s;
+}
+.kpi-expand-btn:hover {
+  border-color: var(--border-bright);
+  color: var(--text-dim);
+  background: var(--bg-deep);
+}
+
+/* ── Légende fleur compacte ── */
+.flower-legend-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.flower-legend-compact .legend-item {
+  padding: 4px 8px;
+  font-size: 10px;
+}
+
 /* ── Responsive ── */
 @media (max-width:1400px) { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
 @media (max-width:1200px) {
   .hero-stats { grid-template-columns: repeat(2,1fr); }
-  .dual-grid  { grid-template-columns: 1fr; }
-  .flower-section { grid-template-columns: 1fr; }
-  .flower-svg { margin: 0 auto; }
+  .dash-center-grid { grid-template-columns: 1fr; }
 }
 @media (max-width:768px) {
   .dashboard-main { padding: 16px; }

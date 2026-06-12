@@ -60,24 +60,19 @@ const ClassificationVIS: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showPedagogique, setShowPedagogique] = useState(false);
 
-  const mockMachines: VisMachine[] = [
-    { machine_id: 'M005', machine_nom: 'Réducteur R-22', vrms: 8.2, zone_iso: 'D', tendance_7j: 'Hausse forte', classe_vis: 'URGENCE', recommandation: 'Vibrations sévères', action: 'Arrêt immédiat' },
-    { machine_id: 'M002', machine_nom: 'Pompe P-12', vrms: 6.8, zone_iso: 'C', tendance_7j: 'Hausse forte', classe_vis: 'CRITIQUE', recommandation: 'Dépassement zone C', action: 'Planifier intervention' },
-    { machine_id: 'M004', machine_nom: 'Ventilateur V-08', vrms: 5.2, zone_iso: 'C', tendance_7j: 'Hausse modérée', classe_vis: 'ATTENTION', recommandation: 'Surveillance renforcée', action: 'Contrôle sous 2 sem.' },
-    { machine_id: 'M001', machine_nom: 'Compresseur Atlas C-1', vrms: 2.8, zone_iso: 'B', tendance_7j: 'Stable', classe_vis: 'NORMAL', recommandation: 'Fonctionnement normal', action: 'Prochain contrôle 6 sem.' },
-    { machine_id: 'M003', machine_nom: 'Moteur ME-45', vrms: 1.9, zone_iso: 'A', tendance_7j: 'Stable', classe_vis: 'NORMAL', recommandation: 'Excellent état', action: 'Prochain contrôle 6 sem.' },
-  ];
-
   useEffect(() => {
     setLoading(true);
     if (source === 'db') {
-      fetch(`${API}/api/donnees/parc/classification-vis`)
-        .then(r => r.ok ? r.json() : mockMachines)
+      const session = JSON.parse(localStorage.getItem('ai-maint-session') || '{}');
+      const userId = session.id;
+      if (!userId) { setLoading(false); return; }
+      fetch(`${API}/api/donnees/parc/classification-vis?user_id=${userId}`)
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
         .then(d => setMachines(Array.isArray(d) ? d : d.machines || []))
-        .catch(() => setMachines(mockMachines))
+        .catch(() => setMachines([]))
         .finally(() => setLoading(false));
     } else {
-      setMachines(mockMachines);
+      setMachines([]);
       setLoading(false);
     }
   }, [source]);
@@ -105,37 +100,42 @@ const ClassificationVIS: React.FC = () => {
   const pctNeedsAction = machines.length > 0 ? Math.round(needsAction / machines.length * 100) : 0;
 
   if (ctxLoading) return <div className="vis-page"><div className="eda-loading"><Loader2 size={20} className="spin" /> Chargement...</div></div>;
-  if (source === 'dataset' && !isCompatible) {
+
+  const sourceHeader = (
+    <div className="kpis-header">
+      <div className="source-toggle-btns">
+        <button className={`source-toggle-btn${source === 'db' ? ' active' : ''}`} onClick={() => setSource('db')}>Base de données</button>
+        <button className={`source-toggle-btn${source === 'dataset' ? ' active' : ''}`} onClick={() => setSource('dataset')}>Dataset uploadé</button>
+      </div>
+    </div>
+  );
+
+  if (source === 'dataset') {
     return (
       <div className="vis-page">
-        <IncompatibleDatasetMessage
-          page="Classification VIS"
-          datasetName={selectedDs?.name || 'inconnu'}
-          analysisType="maintenance"
-          datasetDetectedType={selectedDs?.detected_type}
-        />
+        {sourceHeader}
+        <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <p style={{ fontSize: 14, marginBottom: 8 }}>La classification VIS depuis un dataset uploadé n'est pas disponible.</p>
+          <p style={{ fontSize: 12, color: 'var(--theme-text-faint)' }}>
+            Utilisez le mode <strong>Base de données</strong> pour voir la classification de votre parc réel.
+          </p>
+          <button style={{ marginTop: 16, padding: '8px 20px', background: '#f97316', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}
+            onClick={() => setSource('db')}>Passer en mode Base de données</button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="vis-page">
-      {/* Source Toggle */}
-      <div className="kpis-header">
-        <div className="source-toggle-btns">
-          <button className={`source-toggle-btn${source === 'db' ? ' active' : ''}`} onClick={() => setSource('db')}>Base de données</button>
-          <button className={`source-toggle-btn${source === 'dataset' ? ' active' : ''}`} onClick={() => setSource('dataset')}>Dataset uploadé</button>
-        </div>
-        {source === 'dataset' && (
-          <select className="source-dataset-select" value={selectedId || ''} onChange={e => setSelectedId(e.target.value ? Number(e.target.value) : null)}>
-            <option value="">-- Dataset maintenance --</option>
-            {datasets.filter(d => d.status === 'processed' && d.detected_type === 'maintenance').map(d => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
-        )}
-      </div>
+      {sourceHeader}
 
+      {loading && (
+        <div className="eda-loading" style={{ padding: '20px 0' }}>
+          <Loader2 size={18} className="spin" /> Chargement de la classification...
+        </div>
+      )}
+      {!loading && <>
       {/* SECTION 1: Explication VIS */}
       <div className="vis-section">
         <h3>Classification VIS — Vibration Intelligent Surveillance</h3>
@@ -173,20 +173,38 @@ const ClassificationVIS: React.FC = () => {
           <table className="parc-table">
             <thead><tr><th>Machine</th><th>V-RMS</th><th>Zone ISO</th><th>Tendance 7j</th><th>Classe VIS</th><th>Recommandation</th><th>Action</th></tr></thead>
             <tbody>
+              {sorted.length === 0 && (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--theme-text-faint)', fontSize: 13 }}>
+                    Aucune machine dans la base de données.
+                  </td>
+                </tr>
+              )}
               {sorted.map(m => (
                 <tr key={m.machine_id}>
                   <td>{m.machine_nom}</td>
-                  <td style={{ fontWeight: 700 }}>{m.vrms} mm/s</td>
-                  <td><span className="parc-zone-badge" style={{ background: m.zone_iso === 'A' ? '#16a34a' : m.zone_iso === 'B' ? '#eab308' : m.zone_iso === 'C' ? '#f97316' : '#dc2626', color: '#fff' }}>Zone {m.zone_iso}</span></td>
-                  <td>{m.tendance_7j}</td>
-                  <td><span className="parc-zone-badge" style={{ background: VIS_COLORS[m.classe_vis] || '#6b7280', color: '#fff' }}>{m.classe_vis}</span></td>
-                  <td>{m.recommandation}</td>
+                  <td style={{ fontWeight: 700 }}>
+                    {m.vrms != null ? `${Number(m.vrms).toFixed(2)} mm/s` : '—'}
+                  </td>
+                  <td>
+                    {m.zone_iso ? (
+                      <span className="parc-zone-badge" style={{ background: m.zone_iso === 'A' ? '#16a34a' : m.zone_iso === 'B' ? '#eab308' : m.zone_iso === 'C' ? '#f97316' : '#dc2626', color: '#fff' }}>Zone {m.zone_iso}</span>
+                    ) : '—'}
+                  </td>
+                  <td>{m.tendance_7j || '—'}</td>
+                  <td>
+                    <span className="parc-zone-badge" style={{
+                      background: m.classe_vis ? (VIS_COLORS[m.classe_vis] || 'var(--theme-bg-hover)') : 'var(--theme-bg-hover)',
+                      color: m.classe_vis && VIS_COLORS[m.classe_vis] ? '#fff' : 'var(--theme-text)',
+                    }}>{m.classe_vis || '—'}</span>
+                  </td>
+                  <td>{m.recommandation || '—'}</td>
                   <td>
                     {(m.classe_vis === 'URGENCE' || m.classe_vis === 'CRITIQUE') ? (
                       <button className="btn-pmc-action urgent" style={{ padding: '4px 10px', fontSize: '10px' }} onClick={() => navigate('/maintenance')}>
                         <Wrench size={10} /> Créer BT
                       </button>
-                    ) : m.action}
+                    ) : (m.action || '—')}
                   </td>
                 </tr>
               ))}
@@ -201,7 +219,7 @@ const ClassificationVIS: React.FC = () => {
         <div className="vis-stats-grid">
           <ResponsiveContainer width={300} height={200}>
             <BarChart data={barData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--theme-border)" />
               <XAxis dataKey="name" tick={{ fontSize: 10 }} />
               <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
               <Tooltip />
@@ -227,6 +245,7 @@ const ClassificationVIS: React.FC = () => {
           </div>
         </div>
       </div>
+      </>}
     </div>
   );
 };

@@ -3,16 +3,24 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
   BarChart3,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock,
   Cpu,
   DollarSign,
   Gauge,
+  ListTodo,
   Loader2,
+  RefreshCw,
+  Shield,
+  Timer,
   TrendingUp,
+  Users,
+  Wifi,
   Wrench,
   X,
   Zap,
@@ -46,14 +54,139 @@ const PERIODES = ['7 jours', '30 jours', '90 jours', '1 an'];
 
 const ATELIER_COLORS = ['#3b82f6', '#f97316', '#16a34a', '#7c3aed', '#dc2626'];
 
-/* Données stables pour le démo quand la BD est vide */
-const DEMO_EVOLUTION = Array.from({ length: 12 }, (_, i) => ({
-  mois: `2026-${String(i + 1).padStart(2, '0')}`,
-  disponibilite: [92.1, 93.4, 91.8, 94.2, 95.1, 93.7, 94.8, 95.6, 93.9, 94.5, 95.2, 94.2][i],
-  oee: [75.2, 76.8, 74.5, 77.1, 78.9, 77.3, 79.1, 80.2, 78.5, 79.3, 80.1, 78.5][i],
-  mtbf: [455, 470, 448, 482, 495, 478, 488, 502, 476, 490, 498, 480][i],
-  mttr: [4.5, 4.2, 4.8, 4.1, 3.9, 4.3, 3.8, 3.6, 4.2, 3.9, 3.7, 4.2][i],
-}));
+
+/* ─── Formateur de valeur ────────────────────────────────────────────── */
+const fmt = (v: any, unit = '', decimals = 0): string => {
+  if (v === null || v === undefined) return '—';
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  if (isNaN(n)) return '—';
+  return `${n.toFixed(decimals)}${unit}`;
+};
+
+/* ─── 9 piliers Dashboard (config statique) ──────────────────────────── */
+const PILLARS: {
+  id: string;
+  name: string;
+  icon: React.ElementType;
+  color: string;
+  kpis: (c: any) => { label: string; value: string }[];
+}[] = [
+  {
+    id: 'revenue_recovery', name: 'Revenue Recovery', icon: DollarSign, color: '#16a34a',
+    kpis: (c) => [
+      { label: 'Économies YTD', value: fmt(c?.economies_ytd_k, ' k€') },
+      { label: 'ROI prédictif',  value: fmt(c?.roi_pct, '%') },
+      { label: 'Pannes évitées', value: fmt(c?.pannes_evitees) },
+      { label: 'Coût moy/panne', value: fmt(c?.cout_moy_panne, ' €') },
+    ],
+  },
+  {
+    id: 'asset_availability', name: 'Asset Availability', icon: Gauge, color: '#3b82f6',
+    kpis: (c) => [
+      { label: 'Disponibilité', value: fmt(c?.disponibilite_moy, '%', 1) },
+      { label: 'OEE / TRS',     value: fmt(c?.oee_moy, '%', 1) },
+      { label: 'MTBF moy',      value: fmt(c?.mtbf_moy, ' h') },
+      { label: 'MTTR moy',      value: fmt(c?.mttr_moy, ' h', 1) },
+    ],
+  },
+  {
+    id: 'risk_reduction', name: 'Risk Reduction', icon: Shield, color: '#dc2626',
+    kpis: (c) => [
+      { label: 'Machines zone D', value: fmt(c?.machines_zone_d) },
+      { label: 'Défauts actifs',  value: fmt(c?.defauts_actifs) },
+      { label: 'DRBF min parc',   value: fmt(c?.drbf_min_parc, ' j', 1) },
+      { label: 'Incidents YTD',   value: fmt(c?.incidents_ytd) },
+    ],
+  },
+  {
+    id: 'smart_replacement', name: 'Smart Replacement', icon: RefreshCw, color: '#7c3aed',
+    kpis: (c) => [
+      { label: 'Remplacements opt.', value: fmt(c?.remplacements_optimaux) },
+      { label: 'Écon. remplacement', value: fmt(c?.economies_remplacement_k, ' k€') },
+      { label: 'PM supprimées',      value: fmt(c?.pm_supprimees) },
+      { label: 'Économies PM',       value: fmt(c?.economies_pm_k, ' k€') },
+    ],
+  },
+  {
+    id: 'iot_network', name: 'IoT Network', icon: Wifi, color: '#0ea5e9',
+    kpis: (c) => [
+      { label: 'Total capteurs',  value: fmt(c?.total_capteurs) },
+      { label: 'Capteurs actifs', value: fmt(c?.capteurs_actifs) },
+      { label: 'Batterie faible', value: fmt(c?.batterie_faible) },
+      { label: 'Batterie moy',    value: fmt(c?.batterie_moy_pct, '%') },
+    ],
+  },
+  {
+    id: 'planned_maintenance', name: 'Maintenance planifiée', icon: Wrench, color: '#f97316',
+    kpis: (c) => [
+      { label: 'BT planifiés', value: fmt(c?.bt_planifies) },
+      { label: 'BT en cours',  value: fmt(c?.bt_en_cours) },
+      { label: 'BT urgents',   value: fmt(c?.bt_urgents) },
+      { label: 'Durée moy',    value: fmt(c?.duree_moy_h, ' h', 1) },
+    ],
+  },
+  {
+    id: 'service_loss', name: 'Service Loss', icon: AlertTriangle, color: '#ef4444',
+    kpis: (c) => [
+      { label: 'Pannes histor.', value: fmt(c?.nb_pannes_historique) },
+      { label: 'Arrêt moy',      value: fmt(c?.arret_moy_h, ' h', 1) },
+      { label: 'Pertes arrêts',  value: fmt(c?.pertes_arret_k, ' k€') },
+      { label: 'Total arrêt',    value: fmt(c?.total_arret_h, ' h') },
+    ],
+  },
+  {
+    id: 'workforce', name: 'Workforce', icon: Users, color: '#8b5cf6',
+    kpis: (c) => [
+      { label: 'Techniciens',   value: fmt(c?.nb_techniciens) },
+      { label: 'Certifications', value: fmt(c?.nb_certifications) },
+      { label: 'Équipe active',  value: fmt(c?.equipe_active) },
+      { label: 'Interventions',  value: fmt(c?.nb_interventions) },
+    ],
+  },
+  {
+    id: 'predictive_power', name: 'Predictive Power', icon: TrendingUp, color: '#f59e0b',
+    kpis: (c) => [
+      { label: 'Taux détection',  value: fmt(c?.taux_detection_pct, '%', 1) },
+      { label: 'Confiance moy',   value: fmt(c?.confiance_moy_pct, '%', 1) },
+      { label: 'Défauts actifs',  value: fmt(c?.defauts_actifs) },
+      { label: 'Lead time moy',   value: fmt(c?.lead_time_moy_j, ' j', 1) },
+    ],
+  },
+];
+
+/* ─── Dérivation KPIs de gestion (depuis dashCats) ───────────────────── */
+const gestionKpis = (cats: any) => {
+  const pm  = cats?.planned_maintenance  ?? {};
+  const svc = cats?.service_loss         ?? {};
+  const wf  = cats?.workforce            ?? {};
+
+  const btPlanned  = pm.bt_planifies  ?? 0;
+  const btOngoing  = pm.bt_en_cours   ?? 0;
+  const btDone     = pm.bt_termines   ?? 0;
+  const btUrgent   = pm.bt_urgents    ?? 0;
+  const btActive   = btPlanned + btOngoing;
+  const btTotal    = btActive + btDone + btUrgent;
+
+  const ratioPM = btTotal > 0
+    ? parseFloat(((btActive / btTotal) * 100).toFixed(1))
+    : null;
+
+  const pmCompliance = (btDone + btPlanned) > 0
+    ? parseFloat((btDone / (btDone + btPlanned) * 100).toFixed(1))
+    : null;
+
+  const nbTech   = Math.max(wf.nb_techniciens ?? 1, 1);
+  const backlog  = parseFloat((btActive / nbTech).toFixed(1));
+
+  const nbPannes   = Math.max(svc.nb_pannes_historique ?? 1, 1);
+  const arretMoy   = svc.arret_moy_h     ?? 0;
+  const pertesK    = svc.pertes_arret_k  ?? 0;
+  const coutArrets = arretMoy > 0 || pertesK > 0
+    ? Math.round(arretMoy * 2500 + (pertesK * 1000 / nbPannes))
+    : null;
+
+  return { ratioPM, pmCompliance, backlog, coutArrets };
+};
 
 const KPIsPage: React.FC = () => {
   const { datasets, selectedId, setSelectedId, loading: ctxLoading } = useDatasets();
@@ -61,74 +194,99 @@ const KPIsPage: React.FC = () => {
   const [source, setSource] = useState<'db' | 'dataset'>('db');
   const [period, setPeriod] = useState('30 jours');
   const [indicator, setIndicator] = useState('disponibilite');
-  const [loading, setLoading] = useState(false);
   const [showPareto, setShowPareto] = useState(false);
   const [showOeeDecomp, setShowOeeDecomp] = useState(true);
   const [showForecast, setShowForecast] = useState(true);
   const [paretoDrillDown, setParetoDrillDown] = useState<string | null>(null);
-  const [dbKpis, setDbKpis] = useState<{ disponibilite?: number; oee?: number; mtbf?: number; mttr?: number } | null>(null);
+  const [dbKpis, setDbKpis] = useState<{
+    disponibilite?: number; oee?: number; mtbf?: number; mttr?: number;
+    performance?: number; qualite?: number; cout_maintenance_k?: number;
+    delta_disponibilite?: number; delta_oee?: number; delta_mtbf?: number; delta_mttr?: number;
+  } | null>(null);
   const [dbEvolution, setDbEvolution] = useState<any[]>([]);
+  const [paretoDB, setParetoDB] = useState<any[]>([]);
+  const [atelierDB, setAtelierDB] = useState<any[]>([]);
+  const [dashCats, setDashCats] = useState<any>(null);
+  const [showDashKpis, setShowDashKpis] = useState(true);
+  const [showGestion, setShowGestion] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
+
+  useEffect(() => {
+    const session = JSON.parse(localStorage.getItem('ai-maint-session') || '{}');
+    const userId = session.id;
+    if (!userId) return;
+    fetch(`${API}/api/dashboard/categories?user_id=${userId}`)
+      .then(r => r.json())
+      .then(setDashCats)
+      .catch(() => setDashCats({}));
+  }, []);
 
   useEffect(() => {
     if (source !== 'db') return;
-    fetch(`${API}/api/donnees/kpis`)
+    const session = JSON.parse(localStorage.getItem('ai-maint-session') || '{}');
+    const userId = session.id;
+    if (!userId) return;
+    fetch(`${API}/api/donnees/kpis?user_id=${userId}`)
       .then(r => r.json())
       .then(d => { if (d && Object.keys(d).length > 0) setDbKpis(d); })
-      .catch(() => {});
-    fetch(`${API}/api/donnees/visualisation`)
+      .catch(() => setFetchError(true));
+    fetch(`${API}/api/donnees/visualisation?user_id=${userId}`)
       .then(r => r.json())
-      .then((rows: any[]) => { if (rows && rows.length > 0) setDbEvolution(rows.reverse()); })
-      .catch(() => {});
+      .then((rows: any[]) => { if (rows && rows.length > 0) setDbEvolution(rows); })
+      .catch(() => setFetchError(true));
+    fetch(`${API}/api/donnees/pareto?user_id=${userId}`)
+      .then(r => r.json())
+      .then((rows: any[]) => { if (Array.isArray(rows)) setParetoDB(rows); })
+      .catch(() => setFetchError(true));
+    fetch(`${API}/api/donnees/ateliers?user_id=${userId}`)
+      .then(r => r.json())
+      .then((rows: any[]) => { if (Array.isArray(rows)) setAtelierDB(rows); })
+      .catch(() => setFetchError(true));
   }, [source]);
 
-  const kpis = dbKpis || { disponibilite: 94.2, oee: 78.5, mtbf: 480, mttr: 4.2 };
-  const evolutionData = dbEvolution.length > 0
-    ? dbEvolution.map(r => ({
-        mois: r.date_kpi || '',
-        disponibilite: r.disponibilite_pct ?? 0,
-        oee: 0,
-        mtbf: 0,
-        mttr: 0,
-      }))
-    : DEMO_EVOLUTION;
+  const kpis: NonNullable<typeof dbKpis> = dbKpis ?? {};
+  const evolutionData = dbEvolution.map(r => ({
+    mois: r.date_kpi || '',
+    disponibilite: r.disponibilite_pct ?? null,
+    oee: r.oee_pct ?? null,
+    mtbf: r.mtbf_heures ?? null,
+    mttr: r.mttr_heures ?? null,
+    qualite: r.qualite_pct ?? null,
+  }));
 
-  const kpiCards = [
-    { label: 'Disponibilité moyenne', value: kpis.disponibilite ?? 94.2, delta: 2.1, unit: '%', icon: Gauge, good: 90, formula: 'MTBF / (MTBF + MTTR) × 100', norm: 'ISO 13306' },
-    { label: 'OEE', value: kpis.oee ?? 78.5, delta: 1.8, unit: '%', icon: TrendingUp, good: 85, formula: 'Taux marche × Perf × Qualité', norm: 'NF E 60-182' },
-    { label: 'MTBF moyen', value: kpis.mtbf ?? 480, delta: 24, unit: 'h', icon: Clock, good: 500, formula: 'Temps total / Nb pannes', norm: 'NF X 60-020' },
-    { label: 'MTTR moyen', value: kpis.mttr ?? 4.2, delta: -0.5, unit: 'h', icon: Wrench, good: 3, formula: 'Temps réparation / Nb pannes', norm: 'NF X 60-020' },
-    { label: 'TRS', value: 76.8, delta: 1.2, unit: '%', icon: BarChart3, good: 80, formula: 'Équivalent OEE', norm: 'NF E 60-182' },
-    { label: 'Coût maintenance', value: 12450, delta: -830, unit: '€', icon: DollarSign, good: 12000, formula: 'Coûts main d\'œuvre + pièces', norm: '' },
+  const kpiCards: { label: string; value: number | null; delta: number | null; unit: string; icon: React.ElementType; good: number; formula: string; norm: string }[] = [
+    { label: 'Disponibilité moyenne', value: kpis.disponibilite ?? null, delta: kpis.delta_disponibilite ?? null, unit: '%', icon: Gauge, good: 90, formula: 'MTBF / (MTBF + MTTR) × 100', norm: 'ISO 13306' },
+    { label: 'TRS / OEE', value: kpis.oee ?? null, delta: kpis.delta_oee ?? null, unit: '%', icon: TrendingUp, good: 85, formula: 'Disponibilité × Performance × Qualité', norm: 'NF E 60-182' },
+    { label: 'MTBF moyen', value: kpis.mtbf ?? null, delta: kpis.delta_mtbf ?? null, unit: 'h', icon: Clock, good: 500, formula: 'Temps total / Nb pannes', norm: 'NF X 60-020' },
+    { label: 'MTTR moyen', value: kpis.mttr ?? null, delta: kpis.delta_mttr ?? null, unit: 'h', icon: Wrench, good: 3, formula: 'Temps réparation / Nb pannes', norm: 'NF X 60-020' },
+    { label: 'TRG', value: null, delta: null, unit: '%', icon: BarChart3, good: 80, formula: 'TRS × (Tps planifié / Tps calendaire)', norm: 'NF E 60-182' },
+    { label: 'Coût maintenance', value: kpis.cout_maintenance_k != null ? +(kpis.cout_maintenance_k * 1000).toFixed(0) : null, delta: null, unit: '€', icon: DollarSign, good: 12000, formula: "Coûts main d'œuvre + pièces", norm: '' },
   ];
 
-  const paretoData = [
-    { defaut: 'Défaut roulement', cout: 42000, pct: 35, machines: ['M002 Pompe P-12', 'M005 Réducteur R-22', 'M007 Moteur ME-12'] },
-    { defaut: 'Désalignement',    cout: 28000, pct: 23, machines: ['M001 Compresseur C-1', 'M003 Moteur ME-45'] },
-    { defaut: 'Balourd',          cout: 18000, pct: 15, machines: ['M004 Ventilateur V-08', 'M001 Compresseur C-1'] },
-    { defaut: 'Usure engrenage',  cout: 12000, pct: 10, machines: ['M005 Réducteur R-22'] },
-    { defaut: 'Cavitation',       cout: 8000,  pct: 7,  machines: ['M002 Pompe P-12'] },
-    { defaut: 'Lubrification',    cout: 5500,  pct: 5,  machines: ['M005 Réducteur R-22'] },
-    { defaut: 'Desserrage',       cout: 3000,  pct: 3,  machines: ['M008 Pompe P-15'] },
-    { defaut: 'Autres',           cout: 2500,  pct: 2,  machines: [] },
-  ];
+  const paretoData = paretoDB.map(r => ({
+    defaut: r.type_defaut,
+    cout: r.cout_total ?? 0,
+    pct: r.pct ?? 0,
+    machines: Array.isArray(r.machines) ? r.machines : [],
+  }));
   const paretoCumul = paretoData.reduce((acc, d, i) => { acc.push((acc[i - 1] || 0) + d.pct); return acc; }, [] as number[]);
 
   // ─── Décomposition OEE = Disponibilité × Performance × Qualité ──────
   const oeeDecomp = useMemo(() => {
-    const dispoVal = (kpis.disponibilite ?? 94.2) / 100;
-    const oeeVal = (kpis.oee ?? 78.5) / 100;
-    // Perf × Qualité = OEE / Disponibilité  →  on les estime à parts égales par défaut
-    const perfQual = oeeVal / Math.max(dispoVal, 0.1);
-    // Hypothèse : qualité ~ 98% pour la plupart des process industriels
-    const qualite = Math.min(0.99, Math.max(0.85, 0.96 + Math.random() * 0.02));
-    const performance = perfQual / qualite;
+    if (kpis.disponibilite == null || kpis.oee == null) return null;
+    const dispoFrac = kpis.disponibilite / 100;
+    const oeeFrac = kpis.oee / 100;
+    const qualiteFrac = kpis.qualite != null ? kpis.qualite / 100 : 0.98;
+    const perfFrac = kpis.performance != null
+      ? kpis.performance / 100
+      : (oeeFrac / Math.max(dispoFrac, 0.01)) / qualiteFrac;
     return {
-      disponibilite: parseFloat((dispoVal * 100).toFixed(1)),
-      performance:   parseFloat((performance * 100).toFixed(1)),
-      qualite:       parseFloat((qualite * 100).toFixed(1)),
-      oee:           parseFloat((oeeVal * 100).toFixed(1)),
+      disponibilite: parseFloat((dispoFrac * 100).toFixed(1)),
+      performance:   parseFloat((perfFrac * 100).toFixed(1)),
+      qualite:       parseFloat((qualiteFrac * 100).toFixed(1)),
+      oee:           parseFloat((oeeFrac * 100).toFixed(1)),
     };
-  }, [kpis.disponibilite, kpis.oee]);
+  }, [kpis.disponibilite, kpis.oee, kpis.qualite, kpis.performance]);
 
   // ─── Tendance prédictive (régression linéaire forward) ──────────────
   const forecastData = useMemo(() => {
@@ -171,29 +329,56 @@ const KPIsPage: React.FC = () => {
   const forecastTrend = Array.isArray(forecastData) ? 'stable' : (forecastData as any).trend;
   const forecastSlope = Array.isArray(forecastData) ? 0 : (forecastData as any).slope;
 
-  const radarData = [
-    { axe: 'Disponibilité', A: 94, B: 88, C: 91, D: 85, E: 92 },
-    { axe: 'OEE', A: 82, B: 75, C: 78, D: 72, E: 80 },
-    { axe: 'MTBF', A: 90, B: 82, C: 85, D: 78, E: 88 },
-    { axe: 'MTTR⁻¹', A: 85, B: 70, C: 80, D: 65, E: 75 },
-    { axe: 'Alertes⁻¹', A: 88, B: 60, C: 75, D: 55, E: 80 },
-  ];
+  const atelierKeys = atelierDB.map((_, i) => String.fromCharCode(65 + i));
+  const radarData = atelierDB.length > 0 ? [
+    { axe: 'Disponibilité', ...Object.fromEntries(atelierDB.map((a, i) => [atelierKeys[i], a.disponibilite ?? 0])) },
+    { axe: 'OEE',           ...Object.fromEntries(atelierDB.map((a, i) => [atelierKeys[i], a.oee ?? 0])) },
+    { axe: 'MTBF',          ...Object.fromEntries(atelierDB.map((a, i) => [atelierKeys[i], Math.min(100, (a.mtbf ?? 0) / 5)])) },
+    { axe: 'MTTR⁻¹',        ...Object.fromEntries(atelierDB.map((a, i) => [atelierKeys[i], Math.max(0, 100 - (a.mttr ?? 0) * 10)])) },
+    { axe: 'Alertes⁻¹',     ...Object.fromEntries(atelierDB.map((a, i) => [atelierKeys[i], Math.max(0, 100 - (a.nb_alertes ?? 0) * 5)])) },
+  ] : [];
 
   const ratios = [
-    { code: 'r1', label: 'Coûts maint / Valeur bien', valeur: '2.8%', benchmark: '< 3% : excellent', ok: true },
-    { code: 'r6', label: 'Coûts défaillance / total', valeur: '18%', benchmark: '< 20% : bon', ok: true },
-    { code: 'r9', label: 'Coûts préventif / total', valeur: '65%', benchmark: 'Optimum ≈ 60–70%', ok: true },
-    { code: 'r22', label: 'Disponibilité opérationnelle', valeur: '94.2%', benchmark: 'Cible > 85%', ok: true },
-    { code: 'r28', label: 'MTBF', valeur: '480 h', benchmark: 'Variable par secteur', ok: true },
+    { code: 'r1',  label: 'Coûts maint / Valeur bien',    valeur: '—',  benchmark: '< 3% : excellent',     ok: null as boolean | null },
+    { code: 'r6',  label: 'Coûts défaillance / total',     valeur: '—',  benchmark: '< 20% : bon',          ok: null as boolean | null },
+    { code: 'r9',  label: 'Coûts préventif / total',       valeur: '—',  benchmark: 'Optimum ≈ 60–70%',     ok: null as boolean | null },
+    { code: 'r22', label: 'Disponibilité opérationnelle',  valeur: kpis.disponibilite != null ? `${kpis.disponibilite.toFixed(1)}%` : '—', benchmark: 'Cible > 85%',           ok: kpis.disponibilite != null ? kpis.disponibilite >= 85 : null },
+    { code: 'r28', label: 'MTBF',                          valeur: kpis.mtbf != null ? `${Math.round(kpis.mtbf)} h` : '—',                 benchmark: 'Variable par secteur', ok: null as boolean | null },
   ];
 
   if (ctxLoading) return <div className="kpis-page"><div className="eda-loading"><Loader2 size={20} className="spin" /> Chargement...</div></div>;
   if (source === 'dataset' && !isCompatible) {
     return <div className="kpis-page"><IncompatibleDatasetMessage page="KPIs & Performance" datasetName={selectedDs?.name || 'inconnu'} analysisType="kpi" /></div>;
   }
+  if (source === 'dataset' && isCompatible) {
+    return (
+      <div className="kpis-page">
+        <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <BarChart3 size={32} style={{ marginBottom: 12, opacity: 0.4 }} />
+          <p style={{ fontSize: 14, marginBottom: 8 }}>
+            L'analyse KPI depuis un dataset uploadé n'est pas encore disponible dans cette vue.
+          </p>
+          <p style={{ fontSize: 12, color: 'var(--theme-text-faint)' }}>
+            Intégrez votre dataset en base via l'onglet <strong>Chargement</strong>, puis consultez les KPIs calculés en mode <strong>Base de données</strong>.
+          </p>
+          <button
+            style={{ marginTop: 16, padding: '8px 20px', background: '#f97316', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}
+            onClick={() => setSource('db')}
+          >
+            Passer en mode Base de données
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="kpis-page">
+      {fetchError && (
+        <div style={{ padding: '10px 16px', background: 'rgba(220,38,38,0.08)', color: '#dc2626', borderRadius: 6, fontSize: 13, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AlertTriangle size={14} /> Certaines données n'ont pas pu être chargées. Vérifiez la connexion au backend.
+        </div>
+      )}
       {/* Period Selector + Source Toggle */}
       <div className="kpis-header">
         <div className="source-toggle-btns">
@@ -219,7 +404,6 @@ const KPIsPage: React.FC = () => {
       <div className="kpis-cards-grid">
         {kpiCards.map(kpi => {
           const Icon = kpi.icon;
-          const deltaPos = kpi.delta >= 0;
           return (
             <div key={kpi.label} className="kpi-card-item" title={`Formule : ${kpi.formula}\nNorme : ${kpi.norm}`}>
               <div className="kpi-card-header">
@@ -227,14 +411,16 @@ const KPIsPage: React.FC = () => {
                 <span className="kpi-card-label">{kpi.label}</span>
               </div>
               <div className="kpi-card-body">
-                <span className="kpi-card-value">{kpi.value}{kpi.unit}</span>
-                <span className={`kpi-card-delta ${deltaPos ? 'pos' : 'neg'}`}>
-                  {deltaPos ? <TrendingUp size={12} /> : <TrendingUp size={12} style={{ transform: 'rotate(180deg)' }} />}
-                  {deltaPos ? '↑' : '↓'} {Math.abs(kpi.delta)}{kpi.unit}
-                </span>
+                <span className="kpi-card-value">{kpi.value != null ? `${kpi.value}${kpi.unit}` : '—'}</span>
+                {kpi.delta != null && (
+                  <span className={`kpi-card-delta ${kpi.delta >= 0 ? 'pos' : 'neg'}`}>
+                    {kpi.delta >= 0 ? <TrendingUp size={12} /> : <TrendingUp size={12} style={{ transform: 'rotate(180deg)' }} />}
+                    {kpi.delta >= 0 ? '↑' : '↓'} {Math.abs(kpi.delta)}{kpi.unit}
+                  </span>
+                )}
               </div>
               <div className="kpi-card-progress">
-                <div className="kpi-card-progress-bar" style={{ width: `${Math.min(100, (kpi.value / kpi.good) * 100)}%`, background: kpi.value >= kpi.good ? '#16a34a' : kpi.value >= kpi.good * 0.85 ? '#f97316' : '#dc2626' }} />
+                <div className="kpi-card-progress-bar" style={{ width: kpi.value != null ? `${Math.min(100, (kpi.value / kpi.good) * 100)}%` : '0%', background: kpi.value != null ? (kpi.value >= kpi.good ? '#16a34a' : kpi.value >= kpi.good * 0.85 ? '#f97316' : '#dc2626') : 'var(--theme-border)' }} />
               </div>
             </div>
           );
@@ -250,55 +436,282 @@ const KPIsPage: React.FC = () => {
           </button>
         </div>
         {showOeeDecomp && (
-          <>
-            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 14 }}>
-              L'<strong>OEE (Overall Equipment Effectiveness)</strong> ou TRS est le produit de 3 ratios fondamentaux
-              (norme NF E 60-182). Cette décomposition identifie les <em>vraies</em> sources de pertes, là où une
-              valeur d'OEE seule reste opaque.
-            </p>
-            <div className="oee-waterfall">
-              <div className="oee-step" style={{ background: '#dbeafe', color: '#1d4ed8' }}>
-                <div className="oee-step-icon"><Clock size={18} /></div>
-                <div className="oee-step-label">Disponibilité</div>
-                <div className="oee-step-value">{oeeDecomp.disponibilite}%</div>
-                <div className="oee-step-formula">Temps marche / Temps requis</div>
-              </div>
-              <div className="oee-mult">×</div>
-              <div className="oee-step" style={{ background: '#fef3c7', color: '#b45309' }}>
-                <div className="oee-step-icon"><Zap size={18} /></div>
-                <div className="oee-step-label">Performance</div>
-                <div className="oee-step-value">{oeeDecomp.performance}%</div>
-                <div className="oee-step-formula">Cadence réelle / Cadence théorique</div>
-              </div>
-              <div className="oee-mult">×</div>
-              <div className="oee-step" style={{ background: '#dcfce7', color: '#15803d' }}>
-                <div className="oee-step-icon"><BarChart3 size={18} /></div>
-                <div className="oee-step-label">Qualité</div>
-                <div className="oee-step-value">{oeeDecomp.qualite}%</div>
-                <div className="oee-step-formula">Pièces conformes / Total produites</div>
-              </div>
-              <div className="oee-eq">=</div>
-              <div className="oee-step oee-step-result" style={{ background: '#ffedd5', color: '#9a3412', borderColor: '#f97316' }}>
-                <div className="oee-step-icon"><TrendingUp size={20} /></div>
-                <div className="oee-step-label">OEE</div>
-                <div className="oee-step-value">{oeeDecomp.oee}%</div>
-                <div className="oee-step-formula">
-                  {oeeDecomp.oee >= 85 ? 'Classe mondiale' : oeeDecomp.oee >= 75 ? 'Très bon' : oeeDecomp.oee >= 60 ? 'Acceptable' : 'Insuffisant'}
+          oeeDecomp == null ? (
+            <div style={{ padding: '16px', color: 'var(--theme-text-muted)', fontSize: 13 }}>
+              Données insuffisantes pour calculer la décomposition OEE.
+              Intégrez des datasets KPI en base pour activer cette section.
+            </div>
+          ) : (
+            <>
+              <p style={{ fontSize: 12, color: 'var(--theme-text-muted)', marginBottom: 14 }}>
+                Le <strong>TRS (Taux de Rendement Synthétique)</strong>, appelé <strong>OEE</strong> en anglais, est le produit de 3 ratios fondamentaux
+                (norme NF E 60-182). TRS et OEE désignent exactement le même indicateur — seule la langue diffère.
+                Cette décomposition identifie les <em>vraies</em> sources de pertes, là où une valeur globale seule reste opaque.
+              </p>
+              <div className="oee-waterfall">
+                <div className="oee-step" style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}>
+                  <div className="oee-step-icon"><Clock size={18} /></div>
+                  <div className="oee-step-label">Disponibilité</div>
+                  <div className="oee-step-value">{oeeDecomp.disponibilite}%</div>
+                  <div className="oee-step-formula">Temps marche / Temps requis</div>
+                </div>
+                <div className="oee-mult">×</div>
+                <div className="oee-step" style={{ background: 'rgba(234,179,8,0.12)', color: '#eab308' }}>
+                  <div className="oee-step-icon"><Zap size={18} /></div>
+                  <div className="oee-step-label">Performance</div>
+                  <div className="oee-step-value">{oeeDecomp.performance}%</div>
+                  <div className="oee-step-formula">Cadence réelle / Cadence théorique</div>
+                </div>
+                <div className="oee-mult">×</div>
+                <div className="oee-step" style={{ background: 'rgba(22,163,74,0.12)', color: '#16a34a' }}>
+                  <div className="oee-step-icon"><BarChart3 size={18} /></div>
+                  <div className="oee-step-label">Qualité</div>
+                  <div className="oee-step-value">{oeeDecomp.qualite}%</div>
+                  <div className="oee-step-formula">Pièces conformes / Total produites</div>
+                </div>
+                <div className="oee-eq">=</div>
+                <div className="oee-step oee-step-result" style={{ background: 'rgba(249,115,22,0.12)', color: '#f97316', borderColor: '#f97316' }}>
+                  <div className="oee-step-icon"><TrendingUp size={20} /></div>
+                  <div className="oee-step-label">OEE</div>
+                  <div className="oee-step-value">{oeeDecomp.oee}%</div>
+                  <div className="oee-step-formula">
+                    {oeeDecomp.oee >= 85 ? 'Classe mondiale' : oeeDecomp.oee >= 75 ? 'Très bon' : oeeDecomp.oee >= 60 ? 'Acceptable' : 'Insuffisant'}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="oee-benchmark-bar">
-              <span style={{ fontSize: 11, color: '#6b7280' }}>Repères industriels :</span>
-              <span style={{ fontSize: 11 }}><span className="oee-marker" style={{ background: '#dc2626' }} /> &lt; 60% Insuffisant</span>
-              <span style={{ fontSize: 11 }}><span className="oee-marker" style={{ background: '#f97316' }} /> 60–75% Acceptable</span>
-              <span style={{ fontSize: 11 }}><span className="oee-marker" style={{ background: '#16a34a' }} /> 75–85% Très bon</span>
-              <span style={{ fontSize: 11 }}><span className="oee-marker" style={{ background: '#7c3aed' }} /> ≥ 85% Classe mondiale</span>
-            </div>
+              <div className="oee-benchmark-bar">
+                <span style={{ fontSize: 11, color: 'var(--theme-text-muted)' }}>Repères industriels :</span>
+                <span style={{ fontSize: 11 }}><span className="oee-marker" style={{ background: '#dc2626' }} /> &lt; 60% Insuffisant</span>
+                <span style={{ fontSize: 11 }}><span className="oee-marker" style={{ background: '#f97316' }} /> 60–75% Acceptable</span>
+                <span style={{ fontSize: 11 }}><span className="oee-marker" style={{ background: '#16a34a' }} /> 75–85% Très bon</span>
+                <span style={{ fontSize: 11 }}><span className="oee-marker" style={{ background: '#7c3aed' }} /> ≥ 85% Classe mondiale</span>
+              </div>
+            </>
+          )
+        )}
+      </div>
+
+      {/* SECTION 2: 9 piliers Dashboard — tous les KPIs de l'application */}
+      <div className="kpis-section">
+        <div className="kpis-section-header">
+          <h3><Activity size={16} /> KPIs Application — 9 piliers de la maintenance prédictive</h3>
+          <button
+            className="baignoire-toggle"
+            style={{ width: 'auto', padding: '4px 12px' }}
+            onClick={() => setShowDashKpis(v => !v)}
+          >
+            {showDashKpis ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+        </div>
+        {showDashKpis && (
+          <>
+            <p style={{ fontSize: 12, color: 'var(--theme-text-muted)', marginBottom: 14 }}>
+              Ces indicateurs sont calculés depuis la <strong>base de données de l'application</strong> (machines, capteurs, historique de maintenance).
+              Si aucune donnée n'a encore été intégrée, les valeurs affichent <strong>—</strong>.
+              Intégrez un dataset via l'onglet <em>Chargement</em> pour les alimenter.
+            </p>
+            {!dashCats ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--theme-text-faint)', fontSize: 13 }}>
+                <Loader2 size={18} className="spin" style={{ display: 'inline-block', marginRight: 8 }} />
+                Chargement des KPIs application…
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                {PILLARS.map(pillar => {
+                  const Icon = pillar.icon;
+                  const catData = dashCats[pillar.id];
+                  const kpis = pillar.kpis(catData);
+                  return (
+                    <div
+                      key={pillar.id}
+                      style={{
+                        background: 'var(--theme-bg-card)',
+                        border: '1px solid var(--theme-border)',
+                        borderRadius: '10px',
+                        padding: '14px 16px',
+                        borderTop: `3px solid ${pillar.color}`,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                        <Icon size={14} color={pillar.color} />
+                        <strong style={{ fontSize: '12px', color: 'var(--theme-text)' }}>{pillar.name}</strong>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 4px' }}>
+                        {kpis.map((kpi) => (
+                          <div key={kpi.label}>
+                            <div style={{
+                              fontSize: '17px',
+                              fontWeight: 700,
+                              lineHeight: 1.2,
+                              color: kpi.value === '—' ? 'var(--theme-text-faint)' : 'var(--theme-text)',
+                            }}>
+                              {kpi.value}
+                            </div>
+                            <div style={{ fontSize: '10px', color: 'var(--theme-text-faint)', marginTop: '2px' }}>
+                              {kpi.label}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </div>
 
-      {/* SECTION 2: Évolution temporelle + Prédiction */}
+      {/* SECTION 2bis: Indicateurs de gestion opérationnelle */}
+      {dashCats && (() => {
+        const g = gestionKpis(dashCats);
+        const svc = dashCats.service_loss ?? {};
+        const gCards = [
+          {
+            label: 'MTTF moyen',
+            value: '—',
+            unit: 'h',
+            icon: Timer,
+            color: '#3b82f6',
+            formula: 'Σ durée vie / nb équipements',
+            norm: 'ISO 14224',
+            note: 'Non-réparables (roulements…) — non tracés en BD',
+            ok: false,
+            progressPct: 0,
+          },
+          {
+            label: 'Ratio PM / Correctif',
+            value: g.ratioPM !== null ? String(g.ratioPM) : '—',
+            unit: '%',
+            icon: BarChart3,
+            color: '#16a34a',
+            formula: 'H préventif / H totales × 100',
+            norm: 'EN 15341 — E1',
+            note: 'Objectif : 70–80 % de préventif',
+            ok: g.ratioPM !== null ? g.ratioPM >= 60 : false,
+            progressPct: g.ratioPM !== null ? Math.min(100, (g.ratioPM / 80) * 100) : 0,
+          },
+          {
+            label: 'PM Compliance',
+            value: g.pmCompliance !== null ? String(g.pmCompliance) : '—',
+            unit: '%',
+            icon: CheckCircle2,
+            color: '#16a34a',
+            formula: 'OT terminés / (terminés + planifiés) × 100',
+            norm: 'EN 15341 — E3',
+            note: 'World-class ≥ 95 %',
+            ok: g.pmCompliance !== null ? g.pmCompliance >= 85 : false,
+            progressPct: g.pmCompliance !== null ? Math.min(100, (g.pmCompliance / 95) * 100) : 0,
+          },
+          {
+            label: 'Backlog',
+            value: g.backlog !== null ? String(g.backlog) : '—',
+            unit: 'sem.',
+            icon: ListTodo,
+            color: '#f97316',
+            formula: 'OT en attente / Capacité équipe',
+            norm: 'EN 15341',
+            note: 'Sain : 2–4 semaines',
+            ok: g.backlog !== null ? (g.backlog >= 2 && g.backlog <= 4) : false,
+            progressPct: g.backlog !== null ? Math.min(100, Math.max(0, (1 - Math.abs(g.backlog - 3) / 4) * 100)) : 0,
+          },
+          {
+            label: 'Coût des arrêts',
+            value: g.coutArrets !== null ? g.coutArrets.toLocaleString() : '—',
+            unit: '€',
+            icon: DollarSign,
+            color: '#dc2626',
+            formula: 't × (marge + fixes) + réparation',
+            norm: 'NF X 60-020',
+            note: 'Formule : t × 2 500 €/h + réparation',
+            ok: false,
+            progressPct: 0,
+          },
+        ];
+        return (
+          <div className="kpis-section">
+            <div className="kpis-section-header">
+              <h3><Shield size={16} /> Indicateurs de gestion opérationnelle</h3>
+              <button
+                className="baignoire-toggle"
+                style={{ width: 'auto', padding: '4px 12px' }}
+                onClick={() => setShowGestion(v => !v)}
+              >
+                {showGestion ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
+            </div>
+            {showGestion && (
+              <>
+                <p style={{ fontSize: 12, color: 'var(--theme-text-muted)', marginBottom: 14 }}>
+                  Indicateurs de maturité de l'organisation maintenance. Formules selon <strong>EN 15341</strong> et <strong>NF X 60-020</strong>.
+                  Le MTTF est en valeur de démo (équipements non-réparables non tracés en BD).
+                </p>
+                <div className="kpis-cards-grid">
+                  {gCards.map(kpi => {
+                    const Icon = kpi.icon;
+                    return (
+                      <div
+                        key={kpi.label}
+                        className="kpi-card-item"
+                        title={`Formule : ${kpi.formula}\nNorme : ${kpi.norm}\n${kpi.note}`}
+                      >
+                        <div className="kpi-card-header">
+                          <Icon size={16} color={kpi.color} />
+                          <span className="kpi-card-label">{kpi.label}</span>
+                        </div>
+                        <div className="kpi-card-body">
+                          <span className="kpi-card-value">
+                            {kpi.value}{kpi.value !== '—' ? kpi.unit : ''}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--theme-text-faint)', marginTop: 4 }}>
+                          {kpi.note}
+                        </div>
+                        <div className="kpi-card-progress" style={{ marginTop: 6 }}>
+                          <div
+                            className="kpi-card-progress-bar"
+                            style={{
+                              width: `${kpi.progressPct}%`,
+                              background: kpi.ok ? '#16a34a' : kpi.color,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Formule détaillée Coût des arrêts */}
+                <div style={{
+                  marginTop: 16,
+                  padding: '14px 18px',
+                  background: 'var(--theme-bg)',
+                  border: '1px solid var(--theme-border)',
+                  borderLeft: '3px solid #dc2626',
+                  borderRadius: '6px',
+                  fontSize: 12,
+                }}>
+                  <strong style={{ display: 'block', marginBottom: 6, color: 'var(--theme-text)' }}>
+                    Formule détaillée — Coût d'un arrêt
+                  </strong>
+                  <code style={{ color: 'var(--theme-text-muted)', fontSize: 11 }}>
+                    Coût = t_arrêt × (Marge horaire perdue + Coûts fixes) + Coût réparation
+                  </code>
+                  <div style={{ marginTop: 8, color: 'var(--theme-text-faint)', lineHeight: 1.6 }}>
+                    Durée moy. : <strong style={{ color: 'var(--theme-text-muted)' }}>{fmt(svc.arret_moy_h, ' h', 1)}</strong>
+                    {' · '}Pertes totales : <strong style={{ color: 'var(--theme-text-muted)' }}>{fmt(svc.pertes_arret_k, ' k€')}</strong>
+                    {' · '}Pannes : <strong style={{ color: 'var(--theme-text-muted)' }}>{fmt(svc.nb_pannes_historique)}</strong>
+                    {' · '}
+                    Taux implicite : <strong style={{ color: '#dc2626' }}>2 500 €/h</strong>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* SECTION 3: Évolution temporelle + Prédiction */}
       <div className="kpis-section">
         <div className="kpis-section-header">
           <h3>
@@ -311,7 +724,7 @@ const KPIsPage: React.FC = () => {
             )}
           </h3>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <label style={{ fontSize: 11, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <label style={{ fontSize: 11, color: 'var(--theme-text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <input type="checkbox" checked={showForecast} onChange={e => setShowForecast(e.target.checked)} />
               Prédiction
             </label>
@@ -331,7 +744,7 @@ const KPIsPage: React.FC = () => {
                 <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--theme-border)" />
             <XAxis dataKey="mois" tick={{ fontSize: 10 }} />
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip />
@@ -346,7 +759,7 @@ const KPIsPage: React.FC = () => {
         </ResponsiveContainer>
       </div>
 
-      {/* SECTION 3: Pareto avec drill-down (cliquable) */}
+      {/* SECTION 4: Pareto avec drill-down (cliquable) */}
       <div className="kpis-section">
         <h3><BarChart3 size={16} /> Analyse Pareto des défaillances</h3>
         <button className="baignoire-toggle" onClick={() => setShowPareto(v => !v)} style={{ marginBottom: '12px' }}>
@@ -356,12 +769,18 @@ const KPIsPage: React.FC = () => {
         {showPareto && (
           <p className="baignoire-text" style={{ marginBottom: '16px' }}>La loi de Pareto (ou loi 80/20) affirme que 80% des effets indésirables sont causés par 20% des causes. En maintenance : 20% des types de défauts causent 80% des arrêts machine. Zone A (0–80%) : causes prioritaires. Zone B (80–95%) : secondaires. Zone C (95–100%) : marginales.</p>
         )}
-        <p style={{ fontSize: 11, color: '#9ca3af', margin: '4px 0 8px' }}>
+        {paretoData.length === 0 ? (
+          <div style={{ padding: '20px', color: 'var(--theme-text-faint)', fontSize: 13, textAlign: 'center' }}>
+            Aucune défaillance enregistrée. Intégrez des données de maintenance ou attendez que le système détecte des défauts.
+          </div>
+        ) : (
+        <>
+        <p style={{ fontSize: 11, color: 'var(--theme-text-faint)', margin: '4px 0 8px' }}>
           Cliquez sur un défaut pour voir les <strong>machines concernées</strong>.
         </p>
         <ResponsiveContainer width="100%" height={300}>
           <ComposedChart data={paretoData} layout="vertical" margin={{ top: 10, right: 30, left: 100, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--theme-border)" />
             <XAxis type="number" tick={{ fontSize: 11 }} />
             <YAxis type="category" dataKey="defaut" tick={{ fontSize: 11 }} width={100} />
             <Tooltip />
@@ -375,7 +794,7 @@ const KPIsPage: React.FC = () => {
               onClick={(d: any) => setParetoDrillDown(d?.defaut || null)}
             >
               {paretoData.map((_, i) => (
-                <Cell key={i} fill={paretoCumul[i] <= 80 ? '#dc2626' : paretoCumul[i] <= 95 ? '#f97316' : '#d1d5db'} />
+                <Cell key={i} fill={paretoCumul[i] <= 80 ? '#dc2626' : paretoCumul[i] <= 95 ? '#f97316' : 'var(--theme-border)'} />
               ))}
             </Bar>
             <Line type="monotone" dataKey="pct" stroke="#3b82f6" strokeWidth={2} name="% cumulé" dot={{ r: 3 }} />
@@ -399,11 +818,11 @@ const KPIsPage: React.FC = () => {
               </div>
               {item.machines.length > 0 ? (
                 <>
-                  <p style={{ fontSize: 11.5, color: '#6b7280', margin: '6px 0 8px' }}>
+                  <p style={{ fontSize: 11.5, color: 'var(--theme-text-muted)', margin: '6px 0 8px' }}>
                     Machines impactées par ce type de défaut ({item.machines.length}) — priorité d'intervention :
                   </p>
                   <div className="pareto-drilldown-machines">
-                    {item.machines.map((m, i) => (
+                    {item.machines.map((m: string, i: number) => (
                       <div key={i} className="pareto-drilldown-machine">
                         <span className="pareto-drilldown-rank">#{i + 1}</span>
                         <span>{m}</span>
@@ -412,41 +831,54 @@ const KPIsPage: React.FC = () => {
                   </div>
                 </>
               ) : (
-                <p style={{ fontSize: 11.5, color: '#9ca3af', fontStyle: 'italic' }}>Aucune machine identifiée pour cette catégorie.</p>
+                <p style={{ fontSize: 11.5, color: 'var(--theme-text-faint)', fontStyle: 'italic' }}>Aucune machine identifiée pour cette catégorie.</p>
               )}
             </div>
           );
         })()}
+        </>
+        )}
       </div>
 
-      {/* SECTION 4: Comparaison Ateliers */}
+      {/* SECTION 5: Comparaison Ateliers */}
       <div className="kpis-section">
         <h3><Zap size={16} /> Comparaison ateliers</h3>
-        <div className="radar-grid">
-          <ResponsiveContainer width={400} height={320}>
-            <RadarChart data={radarData}>
-              <PolarGrid stroke="#e5e7eb" />
-              <PolarAngleAxis dataKey="axe" tick={{ fontSize: 10 }} />
-              <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fontSize: 9 }} />
-              {['A', 'B', 'C', 'D', 'E'].map((atelier, i) => (
-                <Radar key={atelier} dataKey={atelier} stroke={ATELIER_COLORS[i]} fill={ATELIER_COLORS[i]} fillOpacity={0.1} strokeWidth={2} />
-              ))}
-              <Legend />
-              <Tooltip />
-            </RadarChart>
-          </ResponsiveContainer>
-          <table className="kpis-table">
-            <thead><tr><th>Atelier</th><th>Dispo</th><th>OEE</th><th>MTBF</th></tr></thead>
-            <tbody>
-              {[{ atelier: 'A', dispo: 94, oee: 82, mtbf: 490 }, { atelier: 'B', dispo: 88, oee: 75, mtbf: 450 }, { atelier: 'C', dispo: 91, oee: 78, mtbf: 470 }, { atelier: 'D', dispo: 85, oee: 72, mtbf: 420 }, { atelier: 'E', dispo: 92, oee: 80, mtbf: 480 }].map(a => (
-                <tr key={a.atelier}><td><strong>{a.atelier}</strong></td><td>{a.dispo}%</td><td>{a.oee}%</td><td>{a.mtbf}h</td></tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {atelierDB.length === 0 ? (
+          <div style={{ padding: '20px', color: 'var(--theme-text-faint)', fontSize: 13, textAlign: 'center' }}>
+            Aucune donnée d'atelier disponible. Intégrez des datasets KPI pour alimenter cette comparaison.
+          </div>
+        ) : (
+          <div className="radar-grid">
+            <ResponsiveContainer width={400} height={320}>
+              <RadarChart data={radarData}>
+                <PolarGrid stroke="var(--theme-border)" />
+                <PolarAngleAxis dataKey="axe" tick={{ fontSize: 10 }} />
+                <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fontSize: 9 }} />
+                {atelierKeys.map((key, i) => (
+                  <Radar key={key} dataKey={key} stroke={ATELIER_COLORS[i % ATELIER_COLORS.length]} fill={ATELIER_COLORS[i % ATELIER_COLORS.length]} fillOpacity={0.1} strokeWidth={2} />
+                ))}
+                <Legend />
+                <Tooltip />
+              </RadarChart>
+            </ResponsiveContainer>
+            <table className="kpis-table">
+              <thead><tr><th>Atelier</th><th>Dispo</th><th>OEE</th><th>MTBF</th></tr></thead>
+              <tbody>
+                {atelierDB.map((a, i) => (
+                  <tr key={i}>
+                    <td><strong>{atelierKeys[i]} — {a.nom}</strong></td>
+                    <td>{a.disponibilite != null ? `${a.disponibilite.toFixed(1)}%` : '—'}</td>
+                    <td>{a.oee != null ? `${a.oee.toFixed(1)}%` : '—'}</td>
+                    <td>{a.mtbf != null ? `${Math.round(a.mtbf)}h` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* SECTION 5: Ratios normalisés */}
+      {/* SECTION 6: Ratios normalisés */}
       <div className="kpis-section">
         <h3><Gauge size={16} /> Ratios normalisés — NF X 60-020</h3>
         <div className="ratios-table-wrap">

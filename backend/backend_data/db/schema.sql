@@ -515,7 +515,10 @@ CREATE TABLE IF NOT EXISTS dataset (
     colonnes_manquantes_par_page TEXT,
     date_upload     TEXT DEFAULT (datetime('now')),
     date_traitement TEXT,
-    duree_traitement_s REAL
+    duree_traitement_s REAL,
+    vitesse_rpm          REAL,
+    nb_paires_poles      INTEGER,
+    nb_dents_engrenage   INTEGER
 );
 
 -- ================================================================

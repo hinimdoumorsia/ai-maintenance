@@ -32,7 +32,7 @@
   cursor: pointer; margin-left: 6px;
 }
 .chat-theme-filter { padding: 8px 12px; border-bottom: 1px solid #eee; }
-.chat-theme-filter select { width: 100%; padding: 6px; border-radius: 8px; border: 1px solid #ddd; }
+.chat-theme-filter select { width: 100%; padding: 6px; border-radius: 8px; border: 1px solid #ddd; background: #fff; color: #111827; }
 
 .chat-body { flex: 1; overflow-y: auto; padding: 12px; background: #fafafa; }
 .chat-msg { margin-bottom: 10px; display: flex; flex-direction: column; }
@@ -65,7 +65,11 @@
 .chat-input-wrap { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #eee; background: #fff; }
 .chat-input-wrap textarea {
   flex: 1; resize: none; border-radius: 10px; border: 1px solid #d1d5db; padding: 8px; font-size: 13px; min-height: 38px;
+  /* Fenêtre chatbot toujours claire : on force texte foncé + fond blanc, sinon en thème sombre
+     le textarea hérite d'une couleur de texte claire et devient illisible (blanc sur blanc). */
+  background: #fff; color: #111827;
 }
+.chat-input-wrap textarea::placeholder { color: #9ca3af; }
 .chat-input-wrap textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
 .chat-input-wrap button {
   width: 38px; height: 38px; border-radius: 10px; border: none; background: #0066cc; color: #fff; cursor: pointer;

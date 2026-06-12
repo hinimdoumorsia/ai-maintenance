@@ -59,10 +59,11 @@ def _is_training_path(path: str) -> bool:
 def _maintenance_startup() -> None:
     sys.path.insert(0, str(BACKEND_ROOT / "backend_data"))
     try:
-        from db.database import init_db
+        from db.database import init_db, migrate_db
         from api.chatbot import init_chatbot
 
         init_db()
+        migrate_db()
         init_chatbot()
     finally:
         try:

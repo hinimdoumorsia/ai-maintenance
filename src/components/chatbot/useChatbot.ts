@@ -66,6 +66,12 @@ export function useChatbot() {
     setIsLoading(true);
 
     try {
+      // user_id depuis la session : permet à l'assistant de scoper les données à l'entreprise
+      let userId: number | null = null;
+      try {
+        userId = JSON.parse(localStorage.getItem('ai-maint-session') || '{}').id ?? null;
+      } catch { /* session absente */ }
+
       const res = await fetch(`${API}/api/chatbot/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -74,6 +80,7 @@ export function useChatbot() {
           conversation_history: conversationHistory,
           filters: { theme: themeFilter },
           stream: true,
+          user_id: userId,
         }),
       });
 

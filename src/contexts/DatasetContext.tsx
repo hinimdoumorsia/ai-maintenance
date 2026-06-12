@@ -67,14 +67,66 @@ export interface EDAFrame {
     columns: ColumnInfo[];
   };
   llm_result: {
-    preprocessing_plan: string;
+    executive_summary?: string;
     narrative: string;
+    quality_audit?: string;
+    univariate_insights?: string;
+    bivariate_insights?: string;
+    temporal_insights?: string;
+    diagnostic_insights?: string;
+    preprocessing_plan: string;
     feature_recommendations: string;
+    ml_tasks?: string;
+    limitations?: string;
   };
-  plots: { title: string; path: string; b64: string }[];
+  plots: { title: string; path: string; b64: string; section?: string }[];
   encoding_maps: Record<string, { type: string; mapping: Record<string, number> }>;
   processed_path: string;
   report_path: string;
+  alerts?: Array<{
+    level: 'critical' | 'warning' | 'info';
+    icon?: string;
+    title: string;
+    impact?: string;
+    action?: string;
+    category?: string;
+  }>;
+  iso_25012?: Record<string, { score: number; max: number; ref: string; detail: string }>;
+  vif_info?: Array<{ name: string; vif: number; r2?: number; verdict: string }>;
+  anomalies_iso?: {
+    n_anomalies?: number;
+    pct_anomalies?: number;
+    contamination?: number;
+    n_features?: number;
+    scores_min?: number;
+    scores_mean?: number;
+  };
+  stationarity?: {
+    is_stationary?: boolean;
+    verdict?: string;
+    mean_variation_pct?: number;
+    std_variation_pct?: number;
+  };
+  temporal_trend?: {
+    slope_per_day?: number;
+    current_value?: number;
+    current_date?: string;
+    n_points?: number;
+    trend?: string;
+    [k: string]: any;
+  };
+  exec_summary?: {
+    quality_score?: number;
+    quality_label?: string;
+    dataset_type?: string;
+    n_critical_alerts?: number;
+    n_warnings?: number;
+    readiness?: string;
+    readiness_reason?: string;
+    urgent_actions?: string[];
+    short_term_actions?: string[];
+    medium_term_actions?: string[];
+  };
 }
 
 export interface ColumnInfo {
@@ -148,7 +200,10 @@ export const DatasetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/donnees/datasets`);
+      const session = JSON.parse(localStorage.getItem('ai-maint-session') || '{}');
+      const userId = session.id;
+      if (!userId) { setLoading(false); return; }
+      const res = await fetch(`${API}/api/donnees/datasets?user_id=${userId}`);
       if (res.ok) setDatasets(await res.json());
     } catch { /* backend hors-ligne */ }
     setLoading(false);
