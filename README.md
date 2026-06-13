@@ -7,7 +7,8 @@ Application web de maintenance prédictive pour la surveillance vibratoire des m
 Le système supporte **deux modes** : données temps réel depuis la base SQLite (seed automatique) **ou** analyse de datasets uploadés (CSV, XLSX, TXT, ARFF, ZIP — NASA C-MAPSS, Weka, tabulaires).
 
 **Normes implémentées** : ISO 10816, ISO 20816, ISO 18436, ISO 13306, NF X 60-020, NF E 60-182.
-
+Vidéo youtube : 
+https://www.youtube.com/watch?v=PuMQiexXr4M&t=1106s
 ---
 
 ## Lancement rapide
