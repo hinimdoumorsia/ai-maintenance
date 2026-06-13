@@ -1,210 +1,161 @@
-import React, { useState, useRef } from "react";
-import { Upload, CheckCircle, ChevronDown, FileText, Loader2 } from "lucide-react";
-import { TrainingDataset } from "../types";
+/**
+ * TrainingProgress.tsx — Progression synchronisée avec les logs réels de l'agent.
+ *
+ * MAPPING logs → steps :
+ *   "Pipeline demarre"         → analyse  : in_progress
+ *   "Execution : train_model"  → analyse  : completed  | training : in_progress
+ *   "Resultat : train_model"   → training : completed  | evaluation : in_progress
+ *   "Execution : save_model"   → evaluation : completed | saving : in_progress
+ *   "Resultat : save_model"    → saving : completed
+ *
+ * Note : les titres sont sans accents depuis la correction training_agent.py
+ */
+import React, { memo } from "react";
+import { CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
+import { TrainingStep } from "../types";
 
-interface DatasetUploadProps {
-  onLoaded: (ds: TrainingDataset) => void;
-  onFileSelected: (file: File) => void;
-  uploadedFileName?: string;
-  isUploading?: boolean;
+interface TrainingProgressProps {
+  steps:   TrainingStep[];
+  percent: number;
+  running: boolean;
+  hasError?: boolean;
 }
 
-const DatasetUpload: React.FC<DatasetUploadProps> = ({
-  onLoaded,
-  onFileSelected,
-  uploadedFileName,
-  isUploading = false,
-}) => {
-  const [dragging, setDragging] = useState(false);
-  const [dataset, setDataset] = useState<TrainingDataset | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
-  const [selectedFileInfo, setSelectedFileInfo] = useState<{ name: string; size: string } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+const TrainingProgress: React.FC<TrainingProgressProps> = memo(
+  ({ steps, percent, running, hasError = false }) => {
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-  };
-
-  const load = (file: File) => {
-    const ds: TrainingDataset = {
-      fileName: file.name,
-      fileSize: formatFileSize(file.size),
-      rows: 0,
-      columns: 0,
-      data: [],
+    const getStepIcon = (status: TrainingStep["status"]) => {
+      switch (status) {
+        case "completed":
+          return <CheckCircle size={16} className="text-green-500 flex-shrink-0" />;
+        case "in_progress":
+          return <Loader2   size={16} className="text-orange-500 animate-spin flex-shrink-0" />;
+        case "error" as any:
+          return <XCircle   size={16} className="text-red-500 flex-shrink-0" />;
+        default:
+          return <Clock     size={16} className="text-gray-400 flex-shrink-0" />;
+      }
     };
-    setDataset(ds);
-    setSelectedFileInfo({ name: file.name, size: formatFileSize(file.size) });
-    onLoaded(ds);
-    onFileSelected(file);
-  };
 
-  const handleFileChange = (file: File) => {
-    const validExtensions = [".csv", ".xlsx", ".xls", ".json"];
-    const fileExt = "." + file.name.split(".").pop()?.toLowerCase();
-    if (!validExtensions.includes(fileExt)) {
-      alert(`Format non supporté. Utilisez: ${validExtensions.join(", ")}`);
-      return;
-    }
-    load(file);
-  };
+    const getStepBg = (status: TrainingStep["status"]) => {
+      switch (status) {
+        case "completed":   return "bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800/30";
+        case "in_progress": return "bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/40";
+        case "error" as any:return "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40";
+        default:            return "bg-gray-50 dark:bg-gray-700/30 border border-transparent";
+      }
+    };
 
-  return (
-    /* Outer ring (dark) */
-    <div className="rounded-2xl border-2 border-gray-800 p-1 shadow-lg shadow-gray-900/20
-                    transition-all duration-300 hover:shadow-gray-800/40 hover:border-gray-700
-                    animate-fadeIn">
-      {/* Inner card */}
-      <div className="bg-white rounded-xl p-4 border border-gray-200">
+    const getStepText = (status: TrainingStep["status"]) => {
+      switch (status) {
+        case "completed":   return "text-gray-800 dark:text-gray-200";
+        case "in_progress": return "text-orange-700 dark:text-orange-300 font-semibold";
+        default:            return "text-gray-500 dark:text-gray-400";
+      }
+    };
 
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-4">
-          <span className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-900 text-white text-xs font-bold flex-shrink-0
-                           ring-2 ring-gray-700 shadow-md">1</span>
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900 leading-tight">Upload Dataset</h3>
-            <p className="text-xs text-gray-400">Téléchargez votre fichier de données</p>
+    const completedCount = steps.filter(s => s.status === "completed").length;
+    const activeStep     = steps.find(s => s.status === "in_progress");
+
+    return (
+      <div className="rounded-2xl border-2 border-gray-800 dark:border-gray-700 p-1 shadow-lg shadow-gray-900/20 transition-all duration-300">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+
+          {/* ── Header ── */}
+          <div className="flex items-center gap-3 mb-4">
+            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-900 dark:bg-gray-700 text-white text-xs font-bold flex-shrink-0 ring-2 ring-gray-700 shadow-md">
+              2
+            </span>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-tight">
+                Progression
+              </h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                {completedCount}/{steps.length} étapes · {percent}% complété
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Drop zone */}
-        <div
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault(); setDragging(false);
-            const file = e.dataTransfer.files?.[0];
-            if (file) handleFileChange(file);
-          }}
-          className={`
-            relative flex flex-col items-center justify-center gap-3 py-8 px-4 rounded-xl border-2 border-dashed
-            transition-all duration-300 cursor-pointer group
-            ${dragging
-              ? "border-orange-500 bg-orange-50 scale-[1.02]"
-              : "border-gray-300 bg-gray-50 hover:border-orange-400 hover:bg-orange-50/40"}
-            ${isUploading ? "opacity-60 cursor-not-allowed" : ""}
-          `}
-          onClick={() => !isUploading && fileRef.current?.click()}
-        >
-          {/* Animated background pulse when dragging */}
-          {dragging && (
-            <div className="absolute inset-0 rounded-xl bg-orange-500/10 animate-pulse pointer-events-none" />
+          {/* ── Barre de progression ── */}
+          <div className="mb-4">
+            <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ease-out ${
+                  hasError
+                    ? "bg-gradient-to-r from-red-400 to-red-500"
+                    : percent === 100
+                    ? "bg-gradient-to-r from-green-400 to-green-500"
+                    : "bg-gradient-to-r from-orange-500 to-orange-600"
+                }`}
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+          </div>
+
+          {/* ── Liste des étapes ── */}
+          <div className="space-y-2">
+            {steps.map((step, idx) => (
+              <div
+                key={step.id}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-300 ${getStepBg(step.status)}`}
+              >
+                <div className="flex-shrink-0">{getStepIcon(step.status)}</div>
+
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm truncate transition-colors duration-200 ${getStepText(step.status)}`}>
+                    {step.label}
+                  </p>
+                  {step.status === "in_progress" && (
+                    <p className="text-xs text-orange-400 dark:text-orange-500 animate-pulse mt-0.5">
+                      En cours…
+                    </p>
+                  )}
+                  {step.status === "completed" && (
+                    <p className="text-xs text-green-500 dark:text-green-400 mt-0.5">
+                      Terminé
+                    </p>
+                  )}
+                </div>
+
+                <span className="text-xs text-gray-400 dark:text-gray-500 font-mono flex-shrink-0">
+                  {idx + 1}/{steps.length}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Message de statut ── */}
+          {running && activeStep && (
+            <div className="mt-4 p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg flex items-center gap-2">
+              <Loader2 size={14} className="text-orange-500 animate-spin flex-shrink-0" />
+              <span className="text-xs text-orange-700 dark:text-orange-400 font-medium truncate">
+                {activeStep.label}…
+              </span>
+            </div>
           )}
 
-          <div className={`
-            w-14 h-14 rounded-full bg-gray-900 flex items-center justify-center
-            shadow-lg shadow-gray-900/30 transition-transform duration-300
-            group-hover:scale-110 group-hover:bg-orange-500
-            ${dragging ? "scale-110 bg-orange-500" : ""}
-          `}>
-            {isUploading
-              ? <Loader2 size={26} color="white" className="animate-spin" />
-              : <Upload size={26} color="white" />
-            }
-          </div>
-
-          <div className="text-center">
-            <p className="text-sm font-medium text-gray-700">
-              {isUploading ? "Chargement en cours…" : "Glissez-déposez votre fichier ici"}
-            </p>
-            <p className="text-xs text-gray-400 mt-1">ou cliquez pour parcourir</p>
-          </div>
-
-          <button
-            className="px-4 py-2 bg-gray-900 hover:bg-orange-500 text-white text-xs font-semibold
-                       rounded-lg border-2 border-gray-800 hover:border-orange-500
-                       transition-all duration-200 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}
-            disabled={isUploading}
-          >
-            Parcourir les fichiers
-          </button>
-
-          <p className="text-xs text-gray-400">Formats : CSV, XLSX, JSON</p>
-
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,.xlsx,.xls,.json"
-            hidden
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFileChange(file);
-            }}
-          />
-        </div>
-
-        {/* File info */}
-        {(dataset || uploadedFileName) && (
-          <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden
-                          animate-slideDown">
-            <div className="flex items-center gap-3 px-4 py-3">
-              <div className="flex-shrink-0">
-                {isUploading
-                  ? <Loader2 size={17} color="#F97316" className="animate-spin" />
-                  : <CheckCircle size={17} color="#22c55e" />
-                }
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-gray-700">Fichier chargé</p>
-                <p className="text-xs text-gray-400 truncate">{uploadedFileName || dataset?.fileName}</p>
-                <p className="text-xs text-gray-400">
-                  {selectedFileInfo?.size || dataset?.fileSize}
-                  {dataset && dataset.rows > 0 && ` · ${dataset.rows.toLocaleString()} lignes · ${dataset.columns} col.`}
-                </p>
-              </div>
-              <button
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-orange-500
-                           transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                onClick={() => setShowPreview(!showPreview)}
-                disabled={!dataset || dataset.rows === 0}
-              >
-                Aperçu
-                <ChevronDown size={13} className={`transition-transform duration-200 ${showPreview ? "rotate-180" : ""}`} />
-              </button>
+          {percent === 100 && !running && (
+            <div className="mt-4 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-2">
+              <CheckCircle size={14} className="text-green-500 flex-shrink-0" />
+              <span className="text-xs text-green-700 dark:text-green-400 font-medium">
+                Pipeline terminé avec succès
+              </span>
             </div>
+          )}
 
-            {showPreview && dataset && dataset.data && dataset.data.length > 0 && (
-              <div className="overflow-x-auto border-t border-gray-200 animate-slideDown">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-gray-900 text-white">
-                      {Object.keys(dataset.data[0]).map((key) => (
-                        <th key={key} className="px-3 py-2 text-left font-medium whitespace-nowrap">{key}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dataset.data.slice(0, 5).map((row, i) => (
-                      <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                        {Object.values(row).map((val, j) => (
-                          <td key={j} className="px-3 py-2 text-gray-600 whitespace-nowrap">{String(val)}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <p className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
-                  Affichage de 5 sur {dataset.rows.toLocaleString()} lignes
-                </p>
-              </div>
-            )}
-
-            {showPreview && dataset && dataset.rows === 0 && (
-              <div className="flex flex-col items-center justify-center gap-2 py-6 text-gray-400 text-xs border-t border-gray-100">
-                <FileText size={20} />
-                <p>Aperçu disponible après l'analyse</p>
-              </div>
-            )}
-          </div>
-        )}
+          {hasError && (
+            <div className="mt-4 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2">
+              <XCircle size={14} className="text-red-500 flex-shrink-0" />
+              <span className="text-xs text-red-700 dark:text-red-400 font-medium">
+                Une erreur est survenue
+              </span>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  }
+);
 
-export default DatasetUpload;
+TrainingProgress.displayName = "TrainingProgress";
+export default TrainingProgress;

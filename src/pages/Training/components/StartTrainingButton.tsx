@@ -1,3 +1,4 @@
+// StartTrainingButton.tsx - Version CORRIGÉE (garde tes fonctionnalités)
 import React from "react";
 import { Play, Loader2, CheckCircle, AlertCircle, Download, FileText, TrendingUp, BarChart, Brain, Sparkles } from "lucide-react";
 
@@ -35,8 +36,8 @@ const StartTrainingButton: React.FC<StartTrainingButtonProps> = ({
     if (running) {
       return (
         <>
-          <Loader2 size={22} className="spin" />
-          Entraînement en cours...
+          <Loader2 size={20} className="animate-spin" />
+          <span>Entraînement en cours...</span>
         </>
       );
     }
@@ -44,16 +45,16 @@ const StartTrainingButton: React.FC<StartTrainingButtonProps> = ({
     if (success) {
       return (
         <>
-          <CheckCircle size={22} />
-          Entraînement terminé !
+          <CheckCircle size={20} />
+          <span>Entraînement terminé !</span>
         </>
       );
     }
     
     return (
       <>
-        <Play size={22} fill="white" />
-        Démarrer l'entraînement
+        <Play size={18} fill="white" />
+        <span>Démarrer l'entraînement</span>
       </>
     );
   };
@@ -64,9 +65,10 @@ const StartTrainingButton: React.FC<StartTrainingButtonProps> = ({
       return;
     }
 
+    // Extraction sécurisée des valeurs
     const comparison = results?.comparison || {};
-    const baselineScore = comparison.baseline_score || 0.79;
-    const cleanedScore = comparison.cleaned_score || 0.8438;
+    const baselineScore = comparison.baseline_score ?? 0.79;
+    const cleanedScore = comparison.cleaned_score ?? 0.8438;
     const delta = cleanedScore - baselineScore;
     const primaryMetric = comparison.primary_metric || "accuracy";
 
@@ -218,7 +220,6 @@ const StartTrainingButton: React.FC<StartTrainingButtonProps> = ({
           </div>
           
           <div class="content">
-            <!-- Section Performances -->
             <div class="section">
               <div class="section-title">
                 <TrendingUp size={22} />
@@ -279,7 +280,6 @@ const StartTrainingButton: React.FC<StartTrainingButtonProps> = ({
               </div>
             </div>
             
-            <!-- Section Remarques de l'agent IA -->
             <div class="section">
               <div class="section-title">
                 <Brain size={22} />
@@ -298,7 +298,6 @@ const StartTrainingButton: React.FC<StartTrainingButtonProps> = ({
               </div>
             </div>
             
-            <!-- Section Analyse des faux positifs -->
             <div class="section">
               <div class="section-title">
                 <BarChart size={22} />
@@ -316,7 +315,6 @@ const StartTrainingButton: React.FC<StartTrainingButtonProps> = ({
               </div>
             </div>
             
-            <!-- Section Conseils -->
             <div class="section">
               <div class="section-title">
                 <Sparkles size={22} />
@@ -334,7 +332,6 @@ const StartTrainingButton: React.FC<StartTrainingButtonProps> = ({
               </div>
             </div>
             
-            <!-- Section Logs -->
             ${logs.length > 0 ? `
             <div class="section">
               <div class="section-title">
@@ -350,7 +347,7 @@ const StartTrainingButton: React.FC<StartTrainingButtonProps> = ({
                     <tr>
                       <td style="white-space: nowrap;">${log.time || '--:--:--'}</td>
                       <td><strong>${log.title || ''}</strong></td>
-                      <td>${log.detail || ''}</td>
+                      <td style="word-break: break-word;">${(log.detail || '').substring(0, 200)}${(log.detail || '').length > 200 ? '...' : ''}</td>
                     </tr>
                   `).join('')}
                 </tbody>
@@ -379,54 +376,36 @@ const StartTrainingButton: React.FC<StartTrainingButtonProps> = ({
   };
 
   return (
-    <div className="start-training-wrapper">
-      <div style={{ display: "flex", gap: "12px", width: "100%" }}>
+    <div className="space-y-3">
+      <div className="flex gap-3">
         <button 
-          className="btn-start-training" 
+          className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-400 disabled:cursor-not-allowed text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-lg shadow-orange-500/25"
           onClick={onStart} 
           disabled={isDisabled}
-          style={{ flex: 2 }}
         >
           {getButtonContent()}
         </button>
         
         {success && (
           <button 
-            className="btn-download-report"
             onClick={generateReport}
-            style={{
-              flex: 1,
-              background: "#10B981",
-              border: "none",
-              borderRadius: "16px",
-              padding: "18px 12px",
-              color: "white",
-              fontWeight: "600",
-              fontSize: "14px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "8px",
-              cursor: "pointer",
-              transition: "all 0.3s ease",
-              boxShadow: "0 4px 14px rgba(16,185,129,0.3)"
-            }}
+            className="px-4 py-3 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-lg shadow-green-500/25"
           >
             <Download size={18} />
-            Télécharger le rapport
+            Rapport
           </button>
         )}
       </div>
       
       {!running && !success && (
-        <p className="start-sub">
+        <p className="text-xs text-center text-gray-400 dark:text-gray-500">
           L'agent analysera vos données et entraînera le meilleur modèle.
         </p>
       )}
       
       {error && (
-        <div className="training-error">
-          <AlertCircle size={14} />
+        <div className="p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2 text-red-700 dark:text-red-400 text-xs">
+          <AlertCircle size={14} className="flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}

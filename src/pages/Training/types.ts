@@ -1,3 +1,4 @@
+// types.ts
 export interface TrainingDataset {
   fileName: string;
   fileSize: string;
@@ -15,7 +16,8 @@ export interface SensorRow {
   status: "OK" | "WARNING" | "ERROR";
 }
 
-export type ModelId = "random_forest" | "xgboost" | "lstm";
+export type ModelId = "random_forest" | "extra_trees" | "xgboost" | "lightgbm" | "catboost";
+
 export type SelectionMode = "auto" | "manual";
 
 export interface MLModel {
@@ -52,4 +54,18 @@ export interface AgentLogEntry {
 export interface AgentOptions {
   autoTrain: boolean;
   explainDecisions: boolean;
+}
+
+export interface ComparisonResult {
+  baseline_score: number;
+  cleaned_score: number;
+  primary_metric: string;
+  delta: number;
+  winner: "baseline" | "cleaned";
+}
+
+export interface TrainingResultsAPI {
+  comparison: ComparisonResult;
+  is_production: boolean;
+  mlflow_run_id: string;
 }
